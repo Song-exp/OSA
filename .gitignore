@@ -19,3 +19,27 @@ Result/
 ~$*
 *.asv
 Thumbs.db
+
+# Python
+.venv/
+__pycache__/
+Result_py/
+
+# CBCT 자동 랜드마크: 외부 코드(sparse clone)와 모델 가중치
+third_party/
+models/
+
+# 환자 영상·신호에서 파생된 파일 (Result_py/ 밖에 생겨도 커밋 금지)
+*.nrrd
+*.nii
+*.nii.gz
+*.mrk.json
+*.h5
+*.ebm
+*.ndf
+*.ndb
+*.hwp
+*.rtf
+# 모델·압축 파일
+*.pth
+*.zip

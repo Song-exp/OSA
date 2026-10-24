@@ -1,0 +1,22 @@
+# Python 3.14, Windows. 설치: .venv\Scripts\python -m pip install -r requirements.txt
+# torch는 RTX 50 시리즈(Blackwell)용 CUDA 12.8 빌드
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+# 데이터 읽기·처리 (python/osa, 점검·재현 스크립트)
+numpy==2.5.4
+pandas==3.1.0
+openpyxl==3.1.5        # pandas.read_excel
+scipy==1.18.1
+statsmodels==0.15.0
+matplotlib==3.11.2
+h5py==3.16.0
+pydicom==3.0.2
+scikit-image==0.26.0
+pypdf==6.21.2          # PSG 리포트 PDF
+
+# CBCT 자동 랜드마크 (third_party/sadt/ALI_CBCT, Slicer 없이 실행)
+torch==2.11.0+cu128
+monai==1.6.1
+SimpleITK==2.5.6
+itk==5.4.7
+dicom2nifti==2.6.2     # ALI_CBCT가 import만 함 (입력은 NRRD)
