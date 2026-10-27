@@ -21,6 +21,10 @@ python -m venv .venv
 | `main_YJ_PSG.m` (한 명 보기) | 아래 "한 명 불러와서 보기" |
 | `main_PSG_OpenFigure.m` | 불필요 (결과가 PNG) |
 
+## GUI 뷰어
+
+`viewer_app.py` (또는 루트의 `OSA_viewer.bat`). 사용법과 화면 정보의 출처는 `docs/00_진행상황.md` 4장에 있습니다.
+
 ## 사용 (`python/` 폴더에서)
 
 일괄 처리 → `Result_py/<PSG|CBCT>/h5`, `Result_py/<PSG|CBCT>/Figure`
@@ -31,7 +35,7 @@ python -m venv .venv
 ..\.venv\Scripts\python -m osa.batch cbct
 ```
 
-한 명 불러와서 보기
+한 명 불러와서 보기 (스크립트: `..\.venv\Scripts\python view.py psg 1` / `view.py cbct 12`)
 
 ```python
 import matplotlib.pyplot as plt
