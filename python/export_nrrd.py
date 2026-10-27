@@ -40,5 +40,5 @@ if __name__ == "__main__":
     for pid in sys.argv[1:]:
         folder = next((ROOT / "Data/CBCT").glob(f"P_{pid}_*"))
         p = OUT / f"P_{pid}.nrrd"
-        write_nrrd(read_cbct(folder), p)
+        write_nrrd(read_cbct(folder, top_only=True), p)   # 하위 폴더(P_34, P_40의 다른 사람 영상) 무시
         print(f"{p}  {p.stat().st_size / 1e6:.0f} MB")

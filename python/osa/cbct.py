@@ -45,10 +45,11 @@ class CBCTData:
     voxel_size_order: str = "row, column, slice"
 
 
-def read_cbct(folder) -> CBCTData:
+def read_cbct(folder, top_only: bool = False) -> CBCTData:
+    """top_only=True면 하위 폴더를 무시합니다 (P_34, P_40: 하위 폴더에 다른 사람 영상이 섞여 있음)."""
     folder = Path(folder)
     assert folder.is_dir(), f"CBCT 폴더가 없습니다: {folder}"
-    files = sorted(f for f in folder.rglob("*") if f.is_file())
+    files = sorted(f for f in (folder.glob("*") if top_only else folder.rglob("*")) if f.is_file())
     headers = []
     for f in files:
         try:

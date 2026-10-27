@@ -18,6 +18,10 @@ pypdf==6.21.2          # PSG 리포트 PDF
 torch==2.11.0+cu128
 torchvision==0.26.0+cu128
 nnunetv2==2.8.1         # AMASSS 분할 (설치 후 torch가 CPU판으로 바뀌면 위 torch 줄을 다시 설치)
+vtk==9.7.1              # AMASSS_CLI가 import
+
+# 형태 연구 (shape_ssm.py)
+pycpd==2.0.0            # CPD 대응점 정합
 monai==1.6.1
 SimpleITK==2.5.6
 itk==5.4.7
