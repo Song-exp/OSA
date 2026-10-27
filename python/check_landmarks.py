@@ -38,7 +38,7 @@ def read_nrrd(path):
 
 def read_points(pid) -> pd.DataFrame:
     rows = []
-    for f in sorted(LM.glob(f"P_{pid}*.mrk.json")):
+    for f in sorted(LM.glob(f"P_{pid}_*.mrk.json")):
         for m in json.loads(f.read_text())["markups"]:
             ras = m.get("coordinateSystem", "LPS") == "RAS"
             for p in m["controlPoints"]:

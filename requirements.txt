@@ -16,6 +16,8 @@ pypdf==6.21.2          # PSG 리포트 PDF
 
 # CBCT 자동 랜드마크 (third_party/sadt/ALI_CBCT, Slicer 없이 실행)
 torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+nnunetv2==2.8.1         # AMASSS 분할 (설치 후 torch가 CPU판으로 바뀌면 위 torch 줄을 다시 설치)
 monai==1.6.1
 SimpleITK==2.5.6
 itk==5.4.7

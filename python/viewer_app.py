@@ -3,6 +3,7 @@
 실행 (python 폴더에서):  ..\\.venv\\Scripts\\python viewer_app.py
 - 왼쪽: 환자 선택, 검사 유형(PSG/CBCT), PSG 구간, 환자 요약(엑셀 값: 나이·성별·BMI·AHI 등, Roh CBCT 계측값)
 - PSG : 탭마다 채널 7개 + 수면단계 + 이벤트 색칠. 그림 아래 도구 막대로 확대·이동
+        채널 그래프를 더블클릭하거나 왼쪽 "채널 확대"에서 고르면 그 채널만 크게 그린 [확대] 탭이 열림
 - CBCT: 축상·관상·시상 단면을 슬라이더로 넘겨 보기, 창 설정(뼈/연조직/공기), [3D 표면] 탭은 마우스로 회전
 원본 읽기는 백그라운드에서 하고, 마지막으로 연 환자 1명만 메모리에 둡니다.
 """
@@ -14,6 +15,7 @@ from tkinter import ttk
 import matplotlib
 
 matplotlib.use("TkAgg")
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -21,7 +23,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 
 from osa.cbct import read_cbct
-from osa.psg_plot import plot_psg
+from osa.psg_plot import _draw_channel, _draw_stages, plot_psg
 from osa.psg_read import read_psg
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,6 +82,7 @@ class App(tk.Tk):
         self.state("zoomed")                 # 최대화로 시작
         self.xl = excel_table()
         self.cbct = None
+        self.psg = None                      # 마지막 PSG: 원신호, 이벤트, 수면단계, 구간, 확대 탭
         self._build_controls()
         self.nb = ttk.Notebook(self)
         self.nb.pack(side="right", fill="both", expand=True)
@@ -95,8 +98,10 @@ class App(tk.Tk):
         self.pid.bind("<<ComboboxSelected>>", lambda e: self._show_summary())
         ttk.Label(f, text="검사 유형").pack(anchor="w")
         self.kind = tk.StringVar(value="psg")
-        ttk.Radiobutton(f, text="PSG (수면다원검사)", variable=self.kind, value="psg").pack(anchor="w")
-        ttk.Radiobutton(f, text="CBCT (3D 영상)", variable=self.kind, value="cbct").pack(anchor="w", pady=(0, 8))
+        ttk.Radiobutton(f, text="PSG (수면다원검사)", variable=self.kind, value="psg",
+                        command=self._toggle_psg_ctl).pack(anchor="w")
+        ttk.Radiobutton(f, text="CBCT (3D 영상)", variable=self.kind, value="cbct",
+                        command=self._toggle_psg_ctl).pack(anchor="w", pady=(0, 8))
         ttk.Label(f, text="PSG 구간 (비우면 전체)\n예: 2013-08-15T22:51").pack(anchor="w")
         self.t0, self.t1 = ttk.Entry(f, width=20), ttk.Entry(f, width=20)
         self.t0.pack(anchor="w")
@@ -105,7 +110,15 @@ class App(tk.Tk):
         self.btn.pack(anchor="w", fill="x")
         self.status = ttk.Label(f, text="", foreground="#555", wraplength=220)
         self.status.pack(anchor="w", pady=8)
-        ttk.Separator(f).pack(fill="x", pady=4)
+        # PSG를 골랐을 때만 보이는 채널 확대 선택
+        self.psg_ctl = ttk.Frame(f)
+        ttk.Label(self.psg_ctl, text="채널 확대 (그래프 더블클릭도 가능)").pack(anchor="w")
+        self.ch = ttk.Combobox(self.psg_ctl, values=[], width=28, state="disabled")
+        self.ch.pack(anchor="w", pady=(0, 8))
+        self.ch.bind("<<ComboboxSelected>>", lambda e: self._zoom(self.ch.current()))
+        self.psg_anchor = ttk.Separator(f)
+        self.psg_anchor.pack(fill="x", pady=4)
+        self._toggle_psg_ctl()
         ttk.Label(f, text="환자 요약").pack(anchor="w")
         self.info = tk.Text(f, width=30, height=30, font=("Consolas", 10), relief="flat", background="#f6f6f6")
         self.info.pack(anchor="w")
@@ -140,6 +153,36 @@ class App(tk.Tk):
 
         threading.Thread(target=work, daemon=True).start()
 
+    def _toggle_psg_ctl(self):
+        if self.kind.get() == "psg":
+            self.psg_ctl.pack(anchor="w", fill="x", before=self.psg_anchor)
+        else:
+            self.psg_ctl.pack_forget()
+
+    # ---------------------------------------------------------- PSG 채널 확대
+    def _zoom(self, i: int):
+        if self.psg is None or i < 0:
+            return
+        rec, events, (w0, w1) = self.psg["rec"], self.psg["events"], self.psg["window"]
+        ch = rec.channels[i]
+        fig = Figure(figsize=(8, 5), constrained_layout=True)
+        a0, a1 = fig.subplots(2, 1, sharex=True, gridspec_kw={"height_ratios": [1, 5]})
+        _draw_stages(a0, self.psg["stages"], w0, w1)
+        _draw_channel(a1, ch, events, w0, w1, 400_000, 1.0, legend=True)   # 더 촘촘하게, 세로축은 자르지 않음
+        for ax in (a0, a1):
+            ax.grid(True, alpha=0.4)
+        a1.set_xlim(w0, w1)
+        a1.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M:%S"))
+        a1.set_xlabel("Recorded date/time")
+        fig.suptitle(f"{Path(rec.source_folder).name} | {i + 1}. {ch.name} | fs {ch.fs:g} Hz")
+        old = self.psg["zoom"]
+        if old is not None:                 # 확대 탭은 하나만 두고 내용만 바꿈
+            self.nb.forget(old)
+        self._tab(fig, f"확대: {ch.name}")
+        self.psg["zoom"] = self.nb.tabs()[-1]
+        self.nb.select(self.psg["zoom"])
+        self.ch.current(i)
+
     def _msg(self, s):
         self.status.configure(text=s)
 
@@ -147,6 +190,9 @@ class App(tk.Tk):
         for t in self.nb.tabs():
             self.nb.forget(t)
         plt.close("all")
+        self.psg = None
+        self.ch.configure(values=[], state="disabled")
+        self.ch.set("")
 
     def _tab(self, fig, title):
         frame = ttk.Frame(self.nb)
@@ -163,11 +209,18 @@ class App(tk.Tk):
         if kind == "psg":
             window = (self.t0.get(), self.t1.get()) if self.t0.get() and self.t1.get() else None
             try:
-                figs, _, _, _, counts = plot_psg(data, window=window, channels_per_tab=7)
+                figs, events, stages, plot_data, counts = plot_psg(data, window=window, channels_per_tab=7)
             except Exception as e:
                 return self._msg(f"그리기 실패: {e}")
+            self.psg = {"rec": data, "events": events, "stages": stages, "window": plot_data["Window"], "zoom": None}
             for i, fig in enumerate(figs, 1):
-                self._tab(fig, f"채널 {(i - 1) * 7 + 1}–{min(i * 7, len(data.channels))}")
+                canvas = self._tab(fig, f"채널 {(i - 1) * 7 + 1}–{min(i * 7, len(data.channels))}")
+                # 축 순서: [수면단계, 채널 1..7] → 더블클릭한 축의 채널 번호
+                ax_ch = {ax: (i - 1) * 7 + r - 1 for r, ax in enumerate(fig.axes[:8]) if r > 0}
+                canvas.mpl_connect("button_press_event",
+                                   lambda e, m=ax_ch: e.dblclick and e.inaxes in m and self._zoom(m[e.inaxes]))
+            self.ch.configure(values=[f"{i + 1}. {c.name}" for i, c in enumerate(data.channels)], state="readonly")
+            self.ch.set("")
             self._msg(f"P_{pid} PSG: 채널 {len(data.channels)}개, 탭 {len(figs)}개")
         else:
             self.cbct = data

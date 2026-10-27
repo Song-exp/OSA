@@ -1,7 +1,8 @@
 """CBCT 랜드마크로 머리 기준 좌표계를 만들고 Roh (2025) 그림 1A 변수를 계산합니다. 계획 문서 2장, 4-1.
 
 좌표계 (Jung 2025, Invivo AFOR):
-  FH  = RPo, LPo, ROr 세 점의 평면
+  FH  = RPo, LPo, ROr 세 점의 평면 (fh="jung", 기본)
+        대안 fh="yao4": 좌우 Po·좌우 Or 4점의 최소제곱 평면 (Yao 2023) / fh="lor": RPo, LPo, LOr (Dot 2022)
   MSP = FH에 수직이고 N과 Ba를 지나는 평면
   원점 N, 축 = (좌+, 앞+, 위+) [mm]
 입력 좌표: DICOM 환자 좌표 LPS (mm), {이름: (x, y, z)}
@@ -14,10 +15,19 @@ import numpy as np
 unit = lambda v: v / np.linalg.norm(v)
 
 
-def head_frame(p: dict) -> tuple[np.ndarray, np.ndarray]:
+def fh_normal(p: dict, fh: str = "jung") -> np.ndarray:
+    g = lambda k: np.asarray(p[k], float)
+    if fh == "yao4":
+        pts = np.vstack([g(k) for k in ("RPo", "LPo", "ROr", "LOr")])
+        return np.linalg.svd(pts - pts.mean(0))[2][-1]
+    o = g("ROr") if fh == "jung" else g("LOr")
+    return unit(np.cross(g("LPo") - g("RPo"), o - g("RPo")))
+
+
+def head_frame(p: dict, fh: str = "jung") -> tuple[np.ndarray, np.ndarray]:
     """(원점, 3x3 행렬: 행 = 좌, 앞, 위 단위벡터)."""
-    rpo, lpo, ror, n, ba = (np.asarray(p[k], float) for k in ("RPo", "LPo", "ROr", "N", "Ba"))
-    sup = unit(np.cross(lpo - rpo, ror - rpo))
+    rpo, lpo, n, ba = (np.asarray(p[k], float) for k in ("RPo", "LPo", "N", "Ba"))
+    sup = fh_normal(p, fh)
     if sup @ (n - rpo) < 0:                      # N은 FH보다 위 → 위쪽을 향하게 (영상 방향과 무관)
         sup = -sup
     left = unit(np.cross(n - ba, sup))           # MSP 법선: N–Ba와 FH 법선을 모두 포함하는 평면의 법선
@@ -29,8 +39,8 @@ def head_frame(p: dict) -> tuple[np.ndarray, np.ndarray]:
     return n, np.vstack([left, ant, sup])
 
 
-def to_head(p: dict) -> dict:
-    o, R = head_frame(p)
+def to_head(p: dict, fh: str = "jung") -> dict:
+    o, R = head_frame(p, fh)
     return {k: R @ (np.asarray(v, float) - o) for k, v in p.items()}
 
 
@@ -39,8 +49,8 @@ def _msp_angle(v):
     return np.degrees(np.arctan2(v[1], -v[2]))
 
 
-def measures(p: dict) -> dict:
-    h = to_head(p)
+def measures(p: dict, fh: str = "jung") -> dict:
+    h = to_head(p, fh)
     out = {}
     if {"A", "B"} <= h.keys():
         out["ANB"] = _msp_angle(h["A"]) - _msp_angle(h["B"])
@@ -65,7 +75,7 @@ def measures(p: dict) -> dict:
 if __name__ == "__main__":
     # 자가 점검: 알려진 기하에서 값이 맞는지, 머리를 임의로 돌리고 옮겨도 값이 같은지
     t = np.radians
-    ref = {"N": (0, 0, 0), "Ba": (0, -90, -30), "RPo": (-55, -80, -25), "LPo": (55, -80, -25), "ROr": (-35, -10, -25),
+    ref = {"N": (0, 0, 0), "Ba": (0, -90, -30), "RPo": (-55, -80, -25), "LPo": (55, -80, -25), "ROr": (-35, -10, -25), "LOr": (35, -10, -25),
            "A": (0, 60 * np.sin(t(-2)), -60 * np.cos(t(2))),
            "B": (0, 100 * np.sin(t(-7)), -100 * np.cos(t(7))),
            "Pog": (0, -8, -115), "Me": (0, -12, -122), "RGo": (-45, -80, -122 + 68 * np.tan(t(28))),
@@ -85,4 +95,7 @@ if __name__ == "__main__":
         moved = {k: Q @ v + shift for k, v in lps.items()}
         m2 = measures(moved)
         assert all(abs(m[k] - m2[k]) < 1e-9 for k in m), (m, m2)
+        for fh in ("yao4", "lor"):             # 좌우 대칭 기하에서는 세 FH 정의가 같은 값
+            m3 = measures(moved, fh)
+            assert all(abs(m[k] - m3[k]) < 1e-9 for k in m), (fh, m, m3)
     print("ceph 자가 점검 통과:", {k: round(v, 3) for k, v in m.items()})
