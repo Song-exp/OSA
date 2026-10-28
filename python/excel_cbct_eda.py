@@ -1,5 +1,5 @@
 """엑셀의 CBCT·구강 관련 변수 기본 EDA (PSG·PCA·예측 모형 제외). 엑셀은 읽기만 함.
-변수: CBCT 계측 27개 (Roh 11 + 추가 16), 임상 1개 (TMJ pain), 분류 2개 (Type, Group), 촬영 1개 (Slice 간격), 체격 3개
+변수: CBCT 계측 25개 (Roh 11 + 추가 14), 임상 3개 (TMJ pain, Nasal obstruction, Maxillary sinusitis), 분류 2개 (Type, Group), 촬영 1개 (Slice 간격), 체격 3개
 분포·상관은 주 분석 83명(Valid_Main), 결측은 87명과 83명 둘 다.
 상관은 Spearman r과 쌍별 N만 냄 (전체 쌍 p값 없음). 관심 쌍만 따로 표.
 결과: Result_py/excel_cbct_eda/ (cbct_excel_*.csv, fig_*.png). 환자는 P_n 번호만.
@@ -27,13 +27,13 @@ VARS = {
     "TDI": (28, "CBCT 골격", "연속", "mm", "Roh"), "NAV": (29, "CBCT 기도", "연속", "mm³", "Roh"),
     "PAV": (30, "CBCT 기도", "연속", "mm³", "Roh"), "PMCA": (31, "CBCT 기도", "연속", "mm²", "Roh"),
     "PAL": (32, "CBCT 기도", "연속", "mm", "Roh"),
-    "OcclusalPlane": (33, "CBCT 골격", "연속(정수)", "° (추정)", "기준 평면 미확인"),
+    "OcclusalPlane": (33, "CBCT 골격", "연속(정수)", "° (추정)", "평면 = 좌우 상악 제1대구치 근심협측 교두정 + 앞니 겹침 중간점 (인수인계 PPT 14). 각도의 기준 평면 미확인"),
     "ChinDev": (34, "CBCT 골격", "이진", "0/1", "Asymmetry (Chin dev). 방향·기준값 미확인"),
     "TMJpain": (35, "임상", "이진", "0/1", "TMJ pain history (No 0, Yes 1). 영상 계측 아님"),
-    "SeptalDev": (36, "CBCT 비상악", "이진", "0/1", "Septal deviation. 판정 기준 미확인"),
-    "NasalFloorCant": (37, "CBCT 비상악", "이진", "0/1", "Nasal floor cant. 판정 기준 미확인"),
-    "NasalObstruction": (38, "CBCT 비상악", "순서(0/1/2)", "0/1/2", "Nasal obstruction. 등급 의미·출처(영상/증상) 미확인"),
-    "MaxSinusitis": (39, "CBCT 비상악", "이진", "0/1", "Maxillary sinusitis. 판정 기준 미확인"),
+    "SeptalDev": (36, "CBCT 비상악", "이진", "0/1", "Septal deviation. MSP에서 비중격 최대 휜 점(SDp)까지 > 2 mm면 1 (인수인계 PPT 13)"),
+    "NasalFloorCant": (37, "CBCT 비상악", "이진", "0/1", "Nasal floor cant. 좌우 비강저 최하점 연결선과 MSP 각도가 90°±2° 밖이면 1 (인수인계 PPT 13)"),
+    "NasalObstruction": (38, "임상", "순서(0/1/2)", "0/1/2", "Nasal obstruction. 임상 소견 (인수인계 PPT: 측정 대상 아님). 등급 의미 미확인"),
+    "MaxSinusitis": (39, "임상", "이진", "0/1", "Maxillary sinusitis. 임상 소견 (인수인계 PPT: 측정 대상 아님)"),
     "Type": (40, "분류", "범주(1~4)", "코드", "Type (Group분류). 정의 미확인 → 해석 금지, 빈도만"),
     "CondAx_R": (41, "CBCT 과두", "연속", "° (추정)", "Condylar angle Axial Rt"), "CondAx_L": (42, "CBCT 과두", "연속", "° (추정)", "Axial Lt"),
     "CondLat_R": (43, "CBCT 과두", "연속", "° (추정)", "Lat Rt"), "CondLat_L": (44, "CBCT 과두", "연속", "° (추정)", "Lat Lt"),
@@ -47,6 +47,35 @@ CONT = [k for k, v in VARS.items() if v[2].startswith("연속")]
 PAIRS = [("CondAx_R", "CondAx_L"), ("CondLat_R", "CondLat_L"), ("JS_Ant_R", "JS_Ant_L"), ("JS_Sup_R", "JS_Sup_L"), ("JS_Post_R", "JS_Post_L")]
 FOCUS = [("OcclusalPlane", "MPFH"), ("SeptalDev", "NasalObstruction"), ("NasalFloorCant", "ChinDev"),
          ("MaxSinusitis", "NasalObstruction"), ("SeptalDev", "NasalFloorCant")]
+
+
+# Roh 2025 분류 기준 (논문 Methods): 이 세 변수만 기준치가 있음
+ROH_CUT = {"ANB": [(0, "Class III | I"), (4, "Class I | II (≥4)")],
+           "MPFH": [(25, "hypo | normo (≥25)"), (30, "normo | hyper (≥30)")],
+           "TDI": [(-2.5, "TSD (<-2.5)"), (-2, "non-TSD (>-2)")]}
+ROH_VARS = ["ANB", "Nperp_A", "Nperp_Pog", "MPFH", "NCWR", "PHI", "TDI", "NAV", "PAV", "PMCA", "PAL"]
+
+
+def boxplots(d, cols, path, title, ncol=6):
+    """박스(사분위, 수염 1.5 IQR) + 환자 점. Roh 기준치가 있는 변수만 가로선."""
+    nrow = int(np.ceil(len(cols) / ncol))
+    fig, ax = plt.subplots(nrow, ncol, figsize=(3 * ncol, 3.6 * nrow), squeeze=False)
+    rng = np.random.default_rng(0)
+    for a, k in zip(ax.ravel(), cols):
+        s = d[k].dropna()
+        a.boxplot(s, widths=0.5, showfliers=False)
+        a.scatter(1 + rng.uniform(-0.15, 0.15, len(s)), s, s=8, c="steelblue", alpha=0.6)
+        for y, lab in ROH_CUT.get(k, []):
+            a.axhline(y, color="tomato", ls="--", lw=1)
+            a.text(1.45, y, lab, color="tomato", fontsize=7, va="bottom", ha="right")
+        a.set_xticks([])
+        a.set_title(f"{k} ({VARS[k][3]}) n={len(s)}", fontsize=9)
+    for a in ax.ravel()[len(cols):]:
+        a.axis("off")
+    fig.suptitle(title, fontsize=11)
+    fig.tight_layout()
+    fig.savefig(path, dpi=90)
+    plt.close(fig)
 
 
 def med_iqr(x):
@@ -188,6 +217,11 @@ def main():
     fig.tight_layout()
     fig.savefig(OUT / "fig_distributions.png", dpi=90)
     plt.close(fig)
+
+    boxplots(d83, ROH_VARS, OUT / "fig_box_roh.png",
+             "Roh 2025 CBCT 변수 (주 분석 83명). 빨간 점선 = 논문 분류 기준 (ANB·MP-FH·TDI만 있음, -2.5~-2는 TSD 경계 구간)")
+    boxplots(d83, [c for c in cont if c not in ROH_VARS], OUT / "fig_box_added.png",
+             "Roh 논문에 없는 추가 CBCT 연속 변수 (83명). 기준치 없음", ncol=6)
 
     fig, ax = plt.subplots(1, 5, figsize=(18, 3.8))
     for a, (r, l) in zip(ax, PAIRS):

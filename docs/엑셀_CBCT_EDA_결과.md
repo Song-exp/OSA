@@ -8,7 +8,8 @@
 
 ## 1. 결론
 
-- **엑셀의 CBCT 관련 변수는 빠짐없이 탐색했습니다.** 엑셀 열 52개의 머리글을 모두 대조해, 인적사항과 PSG를 뺀 CBCT 계측 27개, 임상 1개, 분류 2개, 촬영 1개, 체격 3개를 다뤘습니다.
+- **엑셀의 CBCT 관련 변수는 빠짐없이 탐색했습니다.** 엑셀 열 52개의 머리글을 모두 대조해, 인적사항과 PSG를 뺀 CBCT 계측 25개, 임상 3개, 분류 2개, 촬영 1개, 체격 3개를 다뤘습니다.
+- **정정 (10/29):** 처음에는 Nasal obstruction과 Maxillary sinusitis를 CBCT 변수로 묶고 판정 기준을 "미확인"으로 적었습니다. 그러나 인수인계 PPT 13~14쪽(`CBCT_측정_계획.md` 4-4절)에 따르면 이 둘은 **임상 소견**이고, Septal deviation·Nasal floor cant·Occlusal plane은 판정 기준이 있습니다. 묶음과 정의를 고쳤고, 상관 분석은 CBCT 25개로 다시 계산했습니다. 수치는 바뀌지 않았습니다.
 - 입력 오류로 보이는 값은 없습니다.
   - 불가능한 값: 0건
   - 엑셀 BMI와 키·몸무게로 계산한 BMI의 불일치: 0건
@@ -24,13 +25,14 @@
 |---|---|---|
 | CBCT 골격 (Roh) | ANB, Nperp_A, Nperp_Pog, MP-FH, NCWR, PHI, TDI | 연속 |
 | CBCT 기도 (Roh) | NAV, PAV, PMCA, PAL | 연속 |
-| CBCT 골격 (추가) | Occlusal plane (정수 3~19, 단위 ° 추정) | 연속 |
+| CBCT 골격 (추가) | Occlusal plane (정수 6~19, 단위 ° 추정). 평면 = 좌우 상악 제1대구치 근심협측 교두정 + 앞니 겹침 중간점. 어느 평면과의 각도인지는 미확인 | 연속 |
 | | Asymmetry (Chin dev) | **이진 0/1** (방향 정보 없음) |
-| CBCT 비상악 | Septal deviation, Nasal floor cant, Maxillary sinusitis | 이진 0/1 |
-| | Nasal obstruction | 순서형 0/1/2 (출처가 영상인지 증상인지 미확인) |
+| CBCT 비상악 | Septal deviation (MSP에서 비중격 최대 휜 점까지 > 2 mm면 1) | 이진 0/1 |
+| | Nasal floor cant (좌우 비강저 최하점 연결선과 MSP 각도가 90°±2° 밖이면 1) | 이진 0/1 |
 | CBCT 과두 | Condylar angle Axial·Lat × 좌우 (°) | 연속 |
 | | Joint space Ant·Sup·Post × 좌우 (mm 추정) | 연속 |
-| 임상 | TMJ pain history | 이진 0/1 |
+| 임상 | TMJ pain history, Maxillary sinusitis | 이진 0/1 |
+| | Nasal obstruction | 순서형 0/1/2 (등급 의미 미확인) |
 | 분류 | Type (1~4), Group (1/2, "CII HA") | 코드, 정의 미확인 |
 | 촬영 | CBCT Slice 간격 (mm) | 0.39 mm는 85명, P_50은 0.3 mm, P_78은 0.2 mm |
 
@@ -139,15 +141,15 @@
 
 ## 8. 앞선 결과와 연결되는 점
 
-- **상기도 오분할과 상악동염:** 상기도 마스크가 상악동 안까지 잡힌 P_22는 엑셀 Maxillary sinusitis가 0입니다. 상기도 여러 덩어리로 표시된 7명 중 sinusitis가 1인 환자는 P_31 한 명뿐입니다. 따라서 이 오분할은 **상악동염 때문이 아니라 공기로 찬 정상 상악동을 기도로 잡은 분할 오류**로 보입니다 (잠정).
+- **상기도 오분할과 상악동염:** 상기도 마스크가 상악동 안까지 잡힌 P_22는 엑셀 Maxillary sinusitis(임상 소견)가 0입니다. 상기도 여러 덩어리로 표시된 7명 중 sinusitis가 1인 환자는 P_31 한 명뿐입니다. 따라서 이 오분할은 **상악동염 때문이 아니라 공기로 찬 정상 상악동을 기도로 잡은 분할 오류**로 보입니다 (잠정).
 - **과두 변수와 하악 SSM:** 하악 PC1·PC2의 변위가 관절돌기 주변에 몰려 있었습니다. 과두 각도·관절 공간 10개를 하악 PC와 비교하면 그 변위가 해부학적 차이인지 판단하는 근거가 됩니다. 이번 EDA 범위에서는 하지 않았고, 다음 단계 후보입니다.
 
 ## 9. 데이터 담당께 물을 것 (추가)
 
-1. Occlusal plane, 과두 각도의 기준 평면과 단위
+1. Occlusal plane 각도의 기준 평면 (평면 자체는 PPT 14에 있음), 과두 각도의 기준 평면과 단위
 2. 관절 공간의 단위와 측정 단면
-3. Chin dev, Septal deviation, Nasal floor cant, Maxillary sinusitis의 판정 기준 (임계값)
-4. Nasal obstruction 0/1/2의 의미와 출처 (영상 판독인지 증상 설문인지)
+3. Chin dev의 판정 기준 (Septal deviation·Nasal floor cant는 인수인계 PPT 13에 있음)
+4. Nasal obstruction 0/1/2의 의미, Maxillary sinusitis의 진단 근거 (둘 다 임상 소견)
 5. NAV·PAV를 2022년 이후 측정하지 않은 이유 (측정 범위, 소프트웨어, 측정자 변경)
 6. NCWR이 촬영 연도와 상관되는 이유 (측정자나 방법이 바뀌었는지)
 7. Type 1~4와 Group(CII HA 1/2)의 정의
