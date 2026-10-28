@@ -26,13 +26,28 @@ CONFIRMED = {
                        for p in ("P_16", "P_20", "P_23", "P_35", "P_37")}},
     "CB": {"frame": {p: "ALI Po 이탈 확인 → 머리 좌표계 오염" for p in ("P_16", "P_20", "P_23", "P_35", "P_37")}},
 }
-# 원본 영상 확인이 필요한 개별 메모
-NOTES = {"P_7": "Me·Pog 전달 오차 약 10 mm (정합 잔차는 정상) → 대응점 미끄러짐인지 ALI Me·Pog 오류인지 원본 영상 확인"}
+# 원본 영상 확인이 필요한 개별 메모: {구조: {환자: 메모}}
+NOTES = {"MAND": {"P_7": "Me·Pog 전달 오차 약 10 mm (정합 잔차는 정상) → 대응점 미끄러짐인지 ALI Me·Pog 오류인지 원본 영상 확인"}}
 
 
 def robust_z(x):
     mad = 1.4826 * (x - x.median()).abs().median()
     return (x - x.median()) / mad if mad > 0 else x * 0
+
+
+def gpa_main(shapes, use):
+    """GPA 평균 형태는 주 분석 환자로만 만들고, 제외 환자는 그 평균에 한 번 정렬만 함 (투영용)."""
+    gp, size = gpa(shapes[use])
+    ref = gp.mean(0)
+    ref /= np.sqrt((ref ** 2).sum())
+    X = shapes - shapes.mean(1, keepdims=True)
+    size_all = np.sqrt((X ** 2).sum((1, 2)))
+    X = X / size_all[:, None, None]
+    for i in np.flatnonzero(~use):
+        u, _, vt = np.linalg.svd(X[i].T @ ref)
+        X[i] = X[i] @ (u @ np.diag([1, 1, np.sign(np.linalg.det(u @ vt))]) @ vt)
+    X[use] = gp
+    return X, size_all
 
 
 def pca(flat, use):
@@ -58,17 +73,17 @@ def main():
     te_z = pd.DataFrame({c: robust_z(q[c]) for c in te_cols})
     q["te_flag"] = (te_z > 3.5).any(axis=1)
     q["te_flag_items"] = te_z.apply(lambda r: ", ".join(c[3:] for c in te_cols if r[c] > 3.5), axis=1)
-    q["note"] = [NOTES.get(p, "") for p in q.index]
+    q["note"] = [NOTES.get(a.struct, {}).get(p, "") for p in q.index]
     q["review"] = q.fit_flag | q.te_flag | (q.note != "")
     conf = CONFIRMED.get(a.struct, {})
 
     shapes = z["frame"]
-    gp, csize = gpa(shapes)
     summary = []
-    for ver, X in (("frame", shapes), ("procrustes", gp)):
+    for ver in ("frame", "procrustes"):
         failed = {**conf.get("all", {}), **conf.get(ver, {})}
         q[f"confirmed_fail_{ver}"] = [failed.get(p, "") for p in q.index]
         main_ = np.array([p not in failed for p in ids])
+        X, csize = (shapes, None) if ver == "frame" else gpa_main(shapes, main_)
         var, scores = pca(X.reshape(len(X), -1), main_)
         k = min(10, len(var))
         sc = pd.DataFrame(scores[:, :k], index=ids, columns=[f"PC{i + 1}" for i in range(k)])
