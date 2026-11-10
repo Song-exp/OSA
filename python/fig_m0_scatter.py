@@ -28,7 +28,7 @@ for i, y in enumerate(Y):
         ax = axes[i, j]
         ax.scatter(d[x], d[y], s=10, alpha=.6)
         ax.plot(*zip(*sorted(zip(d[x], np.polyval(np.polyfit(d[x], d[y], 1), d[x])))), "r-", lw=1)
-        ax.set_title(f"r={r:.2f} ρ={rho:.2f} (n={len(d)})", fontsize=9)
+        ax.set_title(f"ρ={rho:.2f}, p={prho:.3f} (n={len(d)})", fontsize=9)   # 1단계 상관은 Spearman으로 통일
         ax.set_xlabel(x if i == len(Y) - 1 else "")
         ax.set_ylabel(y if j == 0 else "")
 fig.suptitle("주 분석 환자 · 엑셀 계측값 vs PSG 지표 (단순 상관, 보정 없음)")

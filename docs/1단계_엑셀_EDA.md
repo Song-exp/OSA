@@ -1,149 +1,204 @@
 # 1단계: 엑셀 데이터 EDA와 Roh 1차 재현 (통합 정리)
 
-> 작성: 2026-10-29. 엑셀 값만으로 한 분석을 목차 하나로 모았습니다. 세부 결과는 아래 원래 문서에 있습니다.
-> - `Phase1_EDA_결과.md` (10/27): 표본 확정, Roh 변수 기초 통계, M0
-> - `논문재현_1차_결과.md` (10/23): Roh 표2~5 재현
-> - `엑셀_CBCT_EDA_결과.md` (10/29): 추가 변수 포함 30개 EDA
+> 작성: 2026-10-29. 갱신: 2026-10-29 (EDA 대상을 86명으로 변경, 상관을 Spearman으로 통일, 그림 재구성).
+> 엑셀 값만으로 한 분석을 목차 하나로 모았습니다. 세부 결과는 아래 원래 문서에 있습니다.
+> - `Phase1_EDA_결과.md` (10/27): 표본 확정, Roh 변수 기초 통계, M0 (83명)
+> - `논문재현_1차_결과.md` (10/23): Roh 표2~5 재현 (83명)
+> - `엑셀_CBCT_EDA_결과.md` (10/29): 추가 변수 포함 30개 EDA. **이 문서의 숫자는 83명 기준이고, 같은 폴더의 csv는 이제 86명 기준입니다.**
 >
-> **그림:** `Result_py/EDA_figures/1_엑셀/`에 목차 번호로 모았습니다 (`python/collect_eda_figures.py`가 원본을 복사).
+> **그림:** `Result_py/EDA_figures/1_엑셀/` 17장. 모두 `python/stage1_figs.py`가 그리고 `python/collect_eda_figures.py`가 목차 번호 이름으로 복사합니다.
 > **표(CSV):** 각 절의 "결과 파일"에 경로를 적었습니다. 모두 `Result_py/` 아래에 있고 git에서 제외됩니다.
 > 환자는 P_n 번호와 집계값으로만 표시합니다.
 
 ---
 
-## 1-0. 공통: 표본, 결측, 분포, 이상값, 상관
+## 표본: EDA는 86명, 모형·재현은 83명
 
-**표본**
-- 엑셀 87명에서 Class III 3명(P_31, P_75, P_85)과 CBCT 본인 아님 1명(P_39)을 빼 **주 분석 83명**으로 정했습니다.
-- P_36과 P_59는 생년월일이 다르지만 등록번호가 같아 포함하고 표시했습니다.
+| 집합 | N | 정의 | 쓰는 곳 |
+|---|---|---|---|
+| **EDA 대상** | **86** | 87명 − P_39 (폴더의 CBCT가 본인 영상이 아님 → 엑셀 CBCT 값 출처 불명) | 1-0 ~ 1-5, 1-6의 PSG 분포 |
+| **Roh 주 분석** (`Valid_Main`) | **83** | EDA 86명 − Class III 3명 (P_31·P_75·P_85, 엑셀 ANB ≤ 0) | 1-6의 M0, Roh 1차 재현 |
+
+- Class III는 Roh 논문이 "빈도가 낮아(3.7%) 통계적 이유로" 제외한 기준을 따라 **모형과 재현에서만** 뺐습니다. EDA에서는 데이터 전체를 보려고 넣었고, 그림에서 **주황색**으로 표시했습니다.
+- P_36·P_59는 생년월일이 다르지만 등록번호가 같아 두 집합 모두에 포함했습니다.
+- Class III 3명의 특징
+  - **P_31:** ANB −8.1°, 18세, **AHI 3.3 (OSA 기준 AHI ≥ 5에 못 미침)**. TDI −8.10이 ANB와 같은 숫자라 입력 오류인지 확인이 필요합니다.
+  - **P_75·P_85:** ANB −1° 근처, 56·67세. PSG 값은 다른 환자들과 비슷합니다.
+  - 세 명 모두 NAV·PAV가 없습니다.
+
+## 1-0. 공통: 변수 분류, 결측, 분포, 이상값, 상관
+
+**변수 분류 (엑셀 52개 열)**
+
+| 묶음 | 열 수 | 내용 |
+|---|---|---|
+| CBCT 계측: Roh 변수 | 11 | ANB, Nperp-A, Nperp-Pog, MP-FH, NCWR, PHI, TDI, NAV, PAV, PMCA, PAL |
+| CBCT 계측: 추가 변수 | 14 | Occlusal plane, Chin dev, Septal deviation, Nasal floor cant, 과두 각도 4개, 관절 공간 6개 |
+| 임상 소견·병력 | 3 | TMJ pain history, Nasal obstruction, Maxillary sinusitis (CBCT 열 사이에 있지만 영상 계측 아님) |
+| 분류 코드 (정의 미확인) | 2 | Type(1~4), Group(1/2) |
+| 인적 / 체격 / PSG 요약 / 촬영·식별 | 4 / 3 / 11 / 4 | 생년월일·성별·나이·성별 코드 / 키·몸무게·BMI / 총수면시간·AHI·RDI·ODI·최저 SpO₂·무호흡 3종·각성 2종·저호흡 / No.·PSG 열·CBCT 열·Slice 간격 |
 
 **모든 변수에 공통으로 한 것**
 
 | 항목 | 방법 | 대상 |
 |---|---|---|
 | 엑셀 열 대조 | 52개 열 머리글 전부 확인, 같은 열을 읽는지 Phase 1과 교차 확인 | 87명 |
-| 결측 | 변수별 결측 수·비율 | 87명, 83명 |
-| 분포 | 평균·SD·중앙값·IQR·범위·왜도, 히스토그램, 박스플롯(환자 점 포함) | 83명 |
-| 이상값 | IQR 1.5배 밖, \|z\|>3 (Phase 1) / robust z>3.5 (추가 EDA). 표시만 하고 제외 안 함 | 83명 분포 기준 |
-| 상관 | Pearson (Phase 1, 13개 변수) / Spearman + 쌍별 N (CBCT 25개 전부) | 83명 |
+| 결측 | 변수별 결측 수·비율 | 87명, 86명 |
+| 분포 | 평균·SD·중앙값·IQR·범위·왜도, 박스플롯(환자 점 포함), 히스토그램(인적·PSG) | 86명 |
+| 이상값 | IQR 1.5배 밖, robust z > 3.5. 표시만 하고 제외 안 함 | 86명 분포 기준 |
+| 상관 | **Spearman 하나로 통일**, 쌍별 결측 제외, 쌍별 N 기록. 인적 3 + CBCT 25 + PSG 4 | 86명 |
 
-**결측:** NAV(83명 중 25명), PAV(58명), ESS(12명) 외에는 결측이 없습니다. NAV·PAV 결측은 촬영 연도로 갈립니다 (1-3).
+- Spearman을 쓴 이유: 0/1·0/1/2 변수가 섞여 있고, AHI·ODI·PMCA·PAV는 꼬리가 길거나 극단값이 있습니다.
+
+**결측:** NAV(86명 중 28명), PAV(61명), ESS(12명) 외에는 결측이 없습니다.
+- NAV·PAV 결측은 촬영 연도로 갈립니다 (1-3). PAV가 있으면 NAV도 항상 있습니다.
+- ESS 결측: P_2, 10, 14, 17, 18, 19, 45, 52, 54, 62, 80, 81.
+- 엑셀 변수는 아니지만 DICOM 촬영 연도는 P_36·P_59·P_78이 없습니다. 촬영 연도를 쓰는 그림은 83명 기준입니다.
 
 | 그림 | 결과 파일 |
 |---|---|
-| `1-0_표본_흐름.png` | `phase1/patient_master.csv` (Valid_Main, Exclude_Main 열) |
-| `1-0_결측_NAV_PAV_촬영연도.png` | `phase1/missingness_report.csv`, `excel_cbct_eda/cbct_excel_missingness.csv`, `cbct_excel_missing_pattern.csv` |
-| `1-0_상관_CBCT25개_Spearman.png` | `excel_cbct_eda/cbct_excel_correlations.csv` |
-| `1-0_상관_Roh변수_PSG_Pearson.png` | `phase1/correlation_matrix.csv` |
-| `1-1_1-6_분포_히스토그램_Phase1.png` | `phase1/baseline_statistics.csv`, `baseline_composition.csv` |
-| | `excel_cbct_eda/cbct_excel_dictionary.csv` (변수 사전), `cbct_excel_qc.csv` (이상값) |
+| `1-0_결측_NAV_PAV_촬영연도.png` | `excel_cbct_eda/cbct_excel_missingness.csv`, `cbct_excel_missing_pattern.csv` |
+| `1-0_상관_Spearman_인적_CBCT25_PSG.png` | `stage1_figs/spearman_all.csv` (쌍별 ρ와 N) |
+| | `excel_cbct_eda/cbct_excel_dictionary.csv` (변수 사전), `cbct_excel_qc.csv` (이상값), `cbct_excel_descriptive.csv` (기술통계) |
 
-## 1-1. 인적·체격 변수
+## 1-1. 인적·체격 변수 (86명)
 
 | 변수 | 무엇을 봤나 | 결과 |
 |---|---|---|
-| 나이 | 분포, AHI와 상관, M0 공변량, 재현 표에서 그룹 간 비교 | 44.0±14.9세 (16–70). M0에서 가장 강한 예측변수 (β 0.44, p<.001). Class II와 hyper가 더 젊음 |
-| 성별 | 빈도, M0 공변량, 재현 표2 (남녀 비교) | 남성 54명 (65%). 남성이 PSG 지표 6개 모두에서 더 중증 (재현됨) |
-| BMI | 분포, 이상값, 키·몸무게로 계산한 값과 대조, M0 공변량 | 24.9±4.1. 계산값과 불일치 0건. 극단값 P_35·P_63·P_80. M0 p=.18 |
+| 나이 | 분포 | 44.1±15.2세 (16–70) |
+| 성별 | 빈도 | 남성 56명 (65%) |
+| BMI | 분포, 이상값, 키·몸무게로 계산한 값과 대조 | 24.9±4.0. 계산값과 불일치(차이 > 0.5) 0건, 최대 차이 0.19. 극단값 P_35·P_63 |
 | 키·몸무게 | BMI 대조용 | 따로 분석하지 않음 |
 
-결과 파일: `phase1/baseline_statistics.csv`, `replication/table2_sex.csv`
+- 성별·나이·BMI는 M0와 Roh 재현에서 공변량입니다. 그 결과는 1-6(83명)에 있습니다.
 
-## 1-2. CBCT 골격 변수 (Roh)
+그림: `1-1_인적_체격.png` / 결과 파일: `stage1_figs/stage1_summary.csv`, `excel_cbct_eda/cbct_excel_descriptive.csv`, `cbct_excel_qc.csv`
+
+## 1-2. CBCT 골격 변수: Roh 7개 (86명)
 
 Roh 논문의 분류 기준이 있는 변수는 ANB, MP-FH, TDI뿐입니다. 박스플롯에 빨간 점선으로 표시했습니다.
 
 | 변수 | 무엇을 봤나 | 결과 |
 |---|---|---|
-| ANB | 분포, 시상 분류 (Class I: 0<ANB<4°, II: ≥4°), M0, 재현 표2~5, 민감도 분석 6조건 | 5.1±2.5°. Class I 26명 / II 57명. M0 p=.061, 조건에 따라 p .006~.23 (방향 일관) |
-| Nperp_A | 분포, 재현 표2 | 0.7±2.0 mm. 이상값 없음 |
-| Nperp_Pog | 분포, 재현 표2, 상관 | −7.7±5.6 mm. ANB와 Spearman −0.74 |
-| MP-FH | 분포, 수직 분류 (hypo <25°, normo 25~30°, hyper ≥30°), M0, 재현 표2·4 | 29.6±5.4°. 19 / 21 / 43명. M0 p=.11. 여성에서 더 큼 (p=.048, 재현됨) |
-| NCWR | 분포, 재현 표 비교 변수 (논문에서 TSD 보조 지표, 기준치 없음) | 51.2±7.1%. **촬영 연도와 상관 (r 0.42)** |
-| PHI | 분포, 재현 표 비교 변수 (TSD 보조 지표, 기준치 없음) | 44.0±4.7%. 특이 소견 없음 |
-| TDI | 분포, 횡방향 분류 (TSD <−2.5 mm, non-TSD >−2 mm), M0, 재현 표3~5, 논문과 분포 비교 | −1.0±2.5 mm. TSD 20 / 경계 11 / non-TSD 52명 (TSD 24%, 논문 34%). **어느 조건에서도 유의하지 않음 (재현 안 됨)** |
+| ANB | 분포, 시상 분류 (Class III ≤ 0, I: 0~4°, II: ≥ 4°) | 4.8±2.9°. Class III 3 / I 26 / II 57명. 극단값 P_31 (−8.1°) |
+| Nperp_A | 분포 | 0.6±2.0 mm. 이상값 없음 |
+| Nperp_Pog | 분포, 상관 | −7.3±6.2 mm. ANB와 ρ −0.77 |
+| MP-FH | 분포, 수직 분류 (hypo < 25°, normo 25~30°, hyper ≥ 30°) | 29.5±5.5°. 21 / 21 / 44명 |
+| NCWR | 분포 (논문에서 TSD 보조 지표, 기준치 없음) | 51.5±7.1%. **촬영 연도와 ρ 0.43 (n=83, p<.001)** |
+| PHI | 분포 (TSD 보조 지표, 기준치 없음) | 44.0±4.9%. 특이 소견 없음 |
+| TDI | 분포, 횡방향 분류 (TSD < −2.5 mm, non-TSD > −2 mm) | −1.2±2.6 mm. TSD 23 / 경계 11 / non-TSD 52명 (27 / 13 / 60%). 논문 102명은 TSD 35 / 경계 13 / non-TSD 54명 (34 / 13 / 53%, 경계는 102명에서 뺀 값). 우리 쪽 TSD가 적음 |
+
+- ANB, Nperp-A, Nperp-Pog, MP-FH, PHI, TDI, PMCA, PAL과 촬영 연도의 상관은 모두 |ρ| < 0.2입니다. NAV·PAV는 결측이 연도로 갈려 따로 보지 않았습니다.
+- NCWR–촬영 연도 상관은 NAV 측정 중단 시기를 경계로 NCWR이 한 번에 높아진 것으로 설명됩니다 (1-3). 측정 방법·측정자 변화인지 환자 구성 차이인지는 데이터 담당 확인이 필요합니다.
 
 | 그림 | 결과 파일 |
 |---|---|
 | `1-2_1-3_Roh변수_박스플롯_기준선.png` | `excel_cbct_eda/cbct_excel_descriptive.csv` |
-| `1-2_1-4_CBCT연속변수_히스토그램.png` | `replication/table2_sex.csv`, `table4_sagittal.csv`, `table4_vertical.csv`, `table4_transverse.csv` |
+| `1-2_Roh분류_빈도_NCWR_촬영연도.png` | `stage1_figs/spearman_all.csv` |
 
-## 1-3. CBCT 기도 변수 (Roh)
+## 1-3. CBCT 기도 변수: Roh 4개 (86명)
 
 | 변수 | 무엇을 봤나 | 결과 |
 |---|---|---|
 | NAV | 결측, 분포, 결측 패턴 (촬영 연도별, 측정 여부별 비교) | n=58. 2023년 이후 거의 측정되지 않음 |
-| PAV | 결측, 분포, 결측 패턴, 재현 표2 | n=25. 2022년 이후 거의 측정되지 않음. PAV가 있으면 NAV도 항상 있음. 극단값 P_5·P_44 |
-| PMCA | 분포 (왜도), M0, 재현 표3~5 | 124.6±68.4 mm², 오른쪽 꼬리 (왜도 0.93). Class II·CSP에서 더 작음 (재현됨). M0 p=.36 |
-| PAL | 분포, M0, 재현 표2 | 71.5±6.0 mm. AHI와 단순상관 0.23 (유의). 남성에서 더 김 (재현됨). M0 p=.82 |
+| PAV | 결측, 분포, 결측 패턴 | n=25. 2022년 이후 거의 측정되지 않음. 극단값 P_5·P_44 |
+| PMCA | 분포 (왜도) | 123.9±67.6 mm², 오른쪽 꼬리 (왜도 0.95). 극단값 P_72 |
+| PAL | 분포 | 71.4±6.0 mm |
 
-- NAV·PAV 결측은 해부학적 특성이 아니라 **측정 시기에 따라 갈립니다.** 측정 여부에 따라 ANB, MP-FH, PMCA, PAL은 차이가 없습니다.
+- NAV·PAV 결측은 해부학적 특성이 아니라 **측정 시기에 따라 갈리는 것으로 보입니다.**
+  - 측정 여부에 따라 ANB, MP-FH, PMCA, PAL, AMASSS 상기도 부피는 차이가 없습니다.
+  - NCWR은 NAV 결측군에서 더 높습니다 (중앙값 56.5 대 48.1, p<.001).
+  - `NCWR ~ 촬영 연도 + NAV 결측 여부` 선형회귀(83명, 일회성 계산)에서 촬영 연도 효과는 사라지고(p=.73) NAV 결측만 남습니다(+8.3%p, p<.001).
+  - 즉 NCWR은 해마다 서서히 오르는 것이 아니라, **NAV 측정을 그만둔 시기(2022~23년)를 경계로 한 번에 높아집니다.** 그 시점에 측정자나 측정 방법이 바뀌었고, 그 변화가 NCWR에도 영향을 줬을 가능성이 있습니다 (1-2의 NCWR–연도 상관도 이것으로 설명됨).
+  - 한계: AMASSS 상기도 마스크는 비강을 분할하지 않아(엑셀 NAV와 r 0.23), 비강 너비 자체가 그대로인지는 직접 확인하지 못했습니다. 2023년 이후 실제로 비강이 넓은 환자가 늘었을 가능성은 남아 있습니다.
+- 측정 프로토콜이나 측정자가 바뀌었는지는 데이터 담당 확인이 필요합니다. 확인 전까지 NCWR은 시기가 섞인 변수로 보고 해석에 주의합니다.
 - Roh 논문은 NAV 마스크에서 **인접 부비동 부피를 제거했다**고 적었습니다. 자동 기도 분할에서 상악동이 잡힌 사례(P_22)와 연결되는 점입니다.
+- 이 엑셀 계측값을 2~3단계 AMASSS 출력의 "정답 마스크"로 해석하지 않습니다.
 
-그림: `1-0_결측_NAV_PAV_촬영연도.png`, `1-2_1-3_Roh변수_박스플롯_기준선.png` / 결과 파일: `excel_cbct_eda/cbct_excel_missing_pattern.csv`
+그림: `1-0_결측_NAV_PAV_촬영연도.png`, `1-3_NAV_PAV_측정군_vs_결측군.png`, `1-2_1-3_Roh변수_박스플롯_기준선.png` / 결과 파일: `excel_cbct_eda/cbct_excel_missing_pattern.csv`
 
-## 1-4. 추가 CBCT 변수 14개 (Roh 논문에 없음)
+## 1-4. 추가 CBCT 변수 14개: Roh 논문에 없음 (86명)
 
 논문 원문에 condyle, joint space, septal, asymmetry는 나오지 않습니다. 이상·정상을 가르는 기준치가 없어 그림에 기준선을 긋지 않았습니다.
 Septal deviation, Nasal floor cant, Occlusal plane의 측정 정의는 인수인계 PPT 13~14쪽에 있습니다 (`CBCT_측정_계획.md` 4-4절).
 
 | 변수 | 무엇을 봤나 | 결과 |
 |---|---|---|
-| Occlusal plane | 분포, 기존 변수와 상관 | 정수 6–19 (° 추정). 평면 = 좌우 상악 제1대구치 근심협측 교두정 + 앞니 겹침 중간점 (각도의 기준 평면은 미확인). MP-FH 0.48, ANB 0.49 |
-| Chin dev | 빈도, 과두 좌우 차이와 비교 | 0/1 이진. 1이 38명 (46%). 과두 좌우 차이와 무관 (p>0.8) |
-| Septal deviation | 빈도, 교차표 | 기준: MSP에서 비중격 최대 휜 점까지 > 2 mm면 1. 1이 34명. Nasal obstruction과 약하게 동반 (0.22) |
-| Nasal floor cant | 빈도, 교차표 | 기준: 좌우 비강저 최하점 연결선과 MSP 각도가 90°±2° 밖이면 1. 1이 36명. Chin dev·Septal deviation과 관계 없음 |
-| 과두 각도 4개 (Axial·Lat × R/L) | 분포, 좌우 상관, R−L 차이, Chin dev별 비교 | 좌우 같은 정의로 측정된 것으로 보임 (좌우 r 0.69–0.84). CondAx는 ANB와 0.45–0.49 |
-| 관절 공간 6개 (Ant·Sup·Post × R/L) | 분포, 불가능한 값(≤0), 좌우 비교 | 불가능한 값 0건. Post만 좌우 차이 (0.14 mm, p=.01). 극단값 P_75·P_83 |
+| Occlusal plane | 분포, 기존 변수와 상관 | 정수 3–19 (° 추정). 평면 = 좌우 상악 제1대구치 근심협측 교두정 + 앞니 겹침 중간점 (각도의 기준 평면은 미확인). MP-FH와 ρ 0.53 |
+| Chin dev | 빈도, 과두 좌우 차이와 비교 | 0/1 이진. 1이 40명 (47%). 과두 좌우 절대차와 무관 (모든 쌍 p > 0.5) |
+| Septal deviation | 빈도, 교차표 | 기준: MSP에서 비중격 최대 휜 점까지 > 2 mm면 1. 1이 35명. Nasal obstruction과 ρ 0.19 (p=.08) |
+| Nasal floor cant | 빈도, 교차표 | 기준: 좌우 비강저 최하점 연결선과 MSP 각도가 90°±2° 밖이면 1. 1이 37명. Chin dev·Septal deviation과 관계 없음 |
+| 과두 각도 4개 (Axial·Lat × R/L) | 분포, 좌우 상관, R−L 차이, Chin dev별 비교 | 좌우 같은 정의로 측정된 것으로 보임 (좌우 ρ 0.69–0.83). CondAx R·L과 ANB ρ 0.51·0.47 |
+| 관절 공간 6개 (Ant·Sup·Post × R/L) | 분포, 불가능한 값(≤ 0), 좌우 비교 | 불가능한 값 0건. Post만 좌우 차이 (중앙값 −0.14 mm, p=.02) |
 
 | 그림 | 결과 파일 |
 |---|---|
-| `1-4_추가변수_박스플롯.png` | `excel_cbct_eda/cbct_excel_descriptive.csv`, `cbct_excel_frequency.csv` |
+| `1-4_추가변수_박스플롯.png` | `excel_cbct_eda/cbct_excel_descriptive.csv` |
 | `1-4_과두_좌우비교.png` | `excel_cbct_eda/cbct_excel_bilateral.csv` |
-| `1-2_1-4_CBCT연속변수_히스토그램.png` | `excel_cbct_eda/cbct_excel_correlations.csv` (관심 쌍 표가 맨 위) |
+| `1-4_관심쌍_산점도.png` | `excel_cbct_eda/cbct_excel_correlations.csv` (관심 쌍 표가 맨 위) |
+| `1-4_이진변수_빈도.png` | `excel_cbct_eda/cbct_excel_frequency.csv` |
 
-## 1-5. 비계측 변수 (영상 계측값이 아닌 열)
+## 1-5. 비계측 변수: 영상 계측값이 아닌 열 (86명)
 
 | 변수 | 성격 | 무엇을 봤나 | 결과 |
 |---|---|---|---|
-| TMJ pain history | 임상 병력 (0/1) | 빈도 | 19명 (23%) |
-| Nasal obstruction | 임상 소견 (0/1/2, 인수인계 PPT: 측정 대상 아님) | 빈도, Septal deviation·상악동염과 교차표 | 39/28/16명. Septal deviation과 약하게 동반 (0.22) |
-| Maxillary sinusitis | 임상 소견 (0/1, 측정 대상 아님) | 빈도, 교차표, 상기도 오분할 환자와 대조 | 4명뿐, 모두 코막힘 1~2. P_22(오분할)는 0 → 상악동염과 무관한 오분할로 봄 |
-| Type (1~4) | 분류 코드, 정의 미확인 | 빈도만 (해석 안 함) | 12 / 53 / 17 / 1명 |
-| Group (1/2) | "CII HA" 코드, 정의 미확인 | 빈도만 (해석 안 함) | 34 / 49명 |
+| TMJ pain history | 임상 병력 (0/1) | 빈도 | 19명 (22%) |
+| Nasal obstruction | 임상 소견 (0/1/2, 인수인계 PPT: 측정 대상 아님) | 빈도, Septal deviation·상악동염과 교차표 | 40/30/16명 |
+| Maxillary sinusitis | 임상 소견 (0/1, 측정 대상 아님) | 빈도, 교차표, 상기도 오분할 환자와 대조 | 6명. 5명은 코막힘 1~2, 1명은 0. Nasal obstruction과 ρ 0.17 (p=.13). P_22(오분할)는 0 → 상악동염과 무관한 오분할로 봄 |
+| Type (1~4) | 분류 코드, 정의 미확인 | 빈도만 (해석 안 함) | 14 / 54 / 17 / 1명 |
+| Group (1/2) | "CII HA" 코드, 정의 미확인 | 빈도만 (해석 안 함) | 34 / 52명 |
 | CBCT Slice 간격 | 촬영 조건 | DICOM 복셀 크기와 대조 | 불일치 0건. P_50 0.3 mm, P_78 0.2 mm, 나머지 0.39 mm |
 
-결과 파일: `excel_cbct_eda/cbct_excel_frequency.csv`, `cbct_excel_qc.csv`
+- 엑셀 QC: 불가능한 값 0건, 내부 대조 불일치 0건, 극단값 6건(BMI P_35·P_63, ANB P_31, PAV P_5·P_44, PMCA P_72)은 검수 표시만 했습니다.
 
-## 1-6. PSG 결과 변수, M0, Roh 1차 재현
+그림: `1-5_비계측변수_빈도.png` / 결과 파일: `excel_cbct_eda/cbct_excel_frequency.csv`, `cbct_excel_qc.csv`
 
-**PSG 결과 변수** (M0와 재현에서 결과로만 사용)
+## 1-6. PSG 결과 변수(86명), M0와 Roh 1차 재현(83명)
+
+**PSG 결과 변수** (86명, M0와 재현에서는 결과로만 사용)
 
 | 변수 | 무엇을 봤나 | 결과 |
 |---|---|---|
-| AHI, RDI, ODI, LSaO2 | 분포, 중증도 구성, 리포트 PDF 값과 대조 | AHI 중앙값 28.9, 왜도 1.41. 전원 AHI≥5 (정상 대조군 없음). **P_65·P_67·P_69는 엑셀 값이 리포트와 다름** |
-| AHI_SUP, AI, HI, CAI, ArI, ESS | 리포트에서 추출, 재현 표 | CAI 최댓값 0.8 → 중추성 무호흡 제외 기준을 사실상 충족 |
-| CBCT–PSG 간격 | 분포, 1년 기준 민감도 분석 | 중앙값 14일. 1년 초과 15명 |
+| AHI, RDI, ODI, LSaO2 | 분포, 중증도 구성, 리포트 PDF 값과 대조 | AHI 31.6±18.8 (중앙값 28.9, 왜도 1.40), ODI 21.3±18.9. 중증도: 정상 < 5 1명(P_31) / 경증 11 / 중등도 34 / 중증 40명. 정상 대조군은 없음. **P_65·P_67·P_69는 엑셀 값이 리포트와 다름** |
+| AHI_SUP, AI, HI, CAI, ArI, ESS | 리포트에서 추출, 재현 표 | CAI 최댓값 0.8 → 중추성 무호흡 제외 기준을 사실상 충족. ESS 결측 12명 |
+| CBCT–PSG 간격 | 분포, 1년 기준 민감도 분석 | 절대값 중앙값 59일 (부호 있는 값의 중앙값 14.5일). 1년 초과 15명 |
 
-**M0:** `AHI ~ 나이 + 성별 + BMI (공변량) + ANB + MP-FH + TDI + PMCA + PAL (관심 변수)`
-- 83명 기준 R² 0.35, adj R² 0.28입니다. 나이와 성별만 유의합니다.
-- 민감도 분석은 6조건으로 했습니다: {전체, 간격 1년 이내, 리포트 불일치 3명 제외} × {AHI, log AHI}. ANB만 조건에 따라 유의와 비유의를 오갑니다.
-- 단순상관 (보정 없음): p<0.05인 것은 BMI(AHI 0.26)와 PAL(0.23)뿐입니다.
+- PSG 지표끼리 (Spearman, 86명): AHI–ODI 0.81, AHI–최저 SpO₂ −0.46, ODI–최저 SpO₂ −0.68.
+- 단순 상관 (보정 없음, Spearman, 86명), p < 0.05인 것:
+  - BMI: AHI 0.27, ODI 0.44, 최저 SpO₂ −0.29
+  - PAL: AHI 0.22, ODI 0.27
+  - ANB: AHI 0.23 (p=.035). **83명에서는 유의하지 않았습니다.** ANB가 낮고 AHI도 낮은 Class III(P_31 등)가 들어가서 생긴 차이일 수 있습니다.
+  - MP-FH는 AHI와 ρ −0.04로 단순 상관이 없습니다.
 
-**Roh 1차 재현**
-- 시상(Class II)과 성별 효과는 재현됐습니다.
-- 횡방향(TDI·TSD) 효과는 재현되지 않았습니다. CSP3D와 nonCSP 그룹이 작은 것이 한 원인입니다.
+**M0 (Roh 주 분석 83명):** `AHI ~ 나이 + 성별 + BMI (공변량) + ANB + MP-FH + TDI + PMCA + PAL (관심 변수)`
+- R² 0.35, adj R² 0.28입니다. 나이(표준화 β 0.44)와 성별(0.42)만 유의합니다.
+- log(AHI+1)로 하면 adj R² 0.31이고, ANB도 유의합니다 (β 0.32, p=.011).
+- 민감도 분석은 6조건으로 했습니다: {전체, 간격 1년 이내, 리포트 불일치 3명 제외} × {AHI, log AHI}. ANB만 조건에 따라 유의와 비유의를 오갑니다 (p .006~.23, 방향은 일관).
+
+**Roh 1차 재현 (83명)**
+- 시상(Class II)과 성별 효과는 재현됐습니다. 남성이 PSG 지표 6개 모두에서 더 중증이고, MP-FH는 여성에서 더 큽니다 (p=.048).
+- 횡방향(TDI·TSD) 효과는 어느 조건에서도 재현되지 않았습니다. CSP3D와 nonCSP 그룹이 작은 것이 한 원인입니다.
+- `1-6_분류별_AHI.png`는 86명으로 그린 단순 비교 그림입니다. 검정 결과는 83명 기준 `replication/` 표에 있습니다.
 
 | 그림 | 결과 파일 |
 |---|---|
-| `1-6_M0변수_vs_PSG_산점도.png` | `phase1/M0_baseline_results.csv`, `phase1/m0_scatter_r.csv` |
-| | `replication/table3_regression.csv`, `table5_csp.csv`, `table5_csp2d3d.csv`, `descriptive.csv`, `supp_correlation.csv` |
+| `1-6_PSG_분포_중증도.png` | `stage1_figs/stage1_summary.csv` |
+| `1-6_CBCT_PSG_검사간격.png` | `stage1_figs/stage1_summary.csv` (AbsGapDays, AbsGap_gt365_n) |
+| `1-6_분류별_AHI.png` | `replication/table3_regression.csv`, `table4_*.csv`, `table5_csp.csv`, `table5_csp2d3d.csv` (83명) |
+| `1-6_분류별_공변량.png` | 그림만 (나이·BMI·남성 비율, 성별·나이는 정정 전 엑셀 값) |
+| `1-6_M0변수_vs_PSG_산점도.png` | `stage1_figs/spearman_all.csv` (나이 열 포함) |
+| `1-6_M0_표준화계수_83명.png` | `phase1/M0_baseline_results.csv` (83명) |
 
 ---
 
+## 1단계 핵심 결과
+
+- 엑셀의 CBCT 관련 항목은 86명 전수 EDA를 마쳤습니다. 기존 임상 계측으로 만든 M0 기준선(83명, adj R² 0.28)도 확보했습니다.
+- 남은 일은 일부 값의 원영상 검수, 측정 정의 확인, NAV·PAV 결측 원인 확인입니다.
+
 ## 1단계에서 안 한 것
 
-1. **Roh 변수 11개의 이상값 검수:** 극단값을 표시만 했고, 환자별 원인 확인은 하지 않았습니다.
-2. **촬영 연도와의 관계:** 일부만 일회성으로 계산해 결과 파일이 없습니다. NCWR만 r 0.42였고 나머지는 |r|<0.2였습니다.
-3. **자동 계측값과 대조:** ANB, MP-FH, Nperp는 2단계에서 했습니다. 나머지는 자동 계측이 아직 없습니다.
-4. **정의 확인:** Occlusal plane·과두 각도의 기준 평면, 관절 공간 단위, Chin dev 판정 기준, Type·Group 정의는 데이터 담당 질문에 넣었습니다 (`엑셀_CBCT_EDA_결과.md` 9장).
+1. **극단값 검수:** 극단값을 표시만 했고, 환자별 원인 확인은 하지 않았습니다. P_31의 TDI(−8.10 = ANB −8.1) 입력 오류 여부도 여기에 포함됩니다.
+2. **자동 계측값과 대조:** ANB, MP-FH, Nperp는 2단계에서 했습니다. 나머지는 자동 계측이 아직 없습니다.
+3. **정의 확인:** Occlusal plane·과두 각도의 기준 평면, 관절 공간 단위, Chin dev 판정 기준, Type·Group 정의는 데이터 담당 질문에 넣었습니다 (`엑셀_CBCT_EDA_결과.md` 9장).
+4. **Phase 1 상관행렬:** `phase1/correlation_matrix.csv`(Pearson, 83명)는 그대로 두었고, 1단계 보고에는 쓰지 않습니다.

@@ -4,7 +4,9 @@
 - 왼쪽: 환자 선택, 검사 유형(PSG/CBCT), PSG 구간, 환자 요약(엑셀 값: 나이·성별·BMI·AHI 등, Roh CBCT 계측값)
 - PSG : 탭마다 채널 7개 + 수면단계 + 이벤트 색칠. 그림 아래 도구 막대로 확대·이동
         채널 그래프를 더블클릭하거나 왼쪽 "채널 확대"에서 고르면 그 채널만 크게 그린 [확대] 탭이 열림
-- CBCT: 축상·관상·시상 단면을 슬라이더로 넘겨 보기, 창 설정(뼈/연조직/공기), [3D 표면] 탭은 마우스로 회전
+- CBCT: 축상·관상·시상 단면을 슬라이더로 넘겨 보기, 창 설정(뼈/연조직/공기)
+        [단면] 탭에 ALI 측정점·FH·MSP 선 겹쳐 보기, 측정점으로 이동
+        [3D 분할 (AMASSS)] 탭: 구조별 분할 표면 + SSM 대응점. 마우스로 회전, 시점 버튼
 원본 읽기는 백그라운드에서 하고, 마지막으로 연 환자 1명만 메모리에 둡니다.
 """
 import threading
@@ -74,6 +76,39 @@ def summary_text(xl, pid) -> str:
     return "\n".join(lines)
 
 
+FRAME_PTS = ("RPo", "LPo", "ROr", "N", "Ba")                # 머리 좌표계 (Jung FH·MSP)에 쓰는 점
+MEASURE_PTS = ("A", "B", "Pog", "Me", "Gn", "RGo", "LGo", "ANS", "PNS", "S")
+ALI_COLOR = lambda k: "red" if k in FRAME_PTS else "gold" if k in MEASURE_PTS else "deepskyblue"
+
+
+def ali_points(data, pid):
+    """ALI 랜드마크(LPS mm)를 이 DICOM 배열의 번호 (열, 행, 슬라이스)로 바꾸고, FH·MSP 평면도 같은 번호 공간으로.
+    반환: ({이름: (열, 행, 슬라이스)}, {"FH"|"MSP": (법선, d)}) 또는 None (ALI 결과 없음)."""
+    from check_landmarks import read_points
+    from osa.ceph import head_frame
+    try:
+        lm = read_points(pid)
+    except Exception:
+        return None
+    if lm.empty:
+        return None
+    t = data.slice_table
+    o = t[[f"Orient{i}" for i in range(1, 7)]].iloc[0].to_numpy(float)
+    rs, cs, z = data.voxel_size_mm
+    A = np.column_stack([o[:3] * cs, o[3:] * rs, np.cross(o[:3], o[3:]) * z])   # export_nrrd.py와 같은 기하
+    p0 = t[["PosX", "PosY", "PosZ"]].to_numpy(float)[0]
+    to_idx = lambda x: np.linalg.solve(A, np.asarray(x, float) - p0)
+    P = {k: r[["x", "y", "z"]].to_numpy(float) for k, r in lm.iterrows()}
+    idx = {k: to_idx(x) for k, x in P.items()}
+    plane = lambda a, b, c: (np.cross(b - a, c - a), np.cross(b - a, c - a) @ a)
+    planes = {}
+    if all(k in P for k in FRAME_PTS):                       # 번호 공간도 아핀이라 평면은 평면으로 남음
+        sup = head_frame(P)[1][2]
+        planes = {"FH": plane(*(idx[k] for k in ("RPo", "LPo", "ROr"))),
+                  "MSP": plane(idx["N"], idx["Ba"], to_idx(P["N"] + 50 * sup))}
+    return idx, planes
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -82,6 +117,7 @@ class App(tk.Tk):
         self.state("zoomed")                 # 최대화로 시작
         self.xl = excel_table()
         self.cbct = None
+        self.vtk_win = None                  # 3D 탭의 VTK 창 (환자 바꿀 때 정리)
         self.psg = None                      # 마지막 PSG: 원신호, 이벤트, 수면단계, 구간, 확대 탭
         self._build_controls()
         self.nb = ttk.Notebook(self)
@@ -190,6 +226,9 @@ class App(tk.Tk):
         for t in self.nb.tabs():
             self.nb.forget(t)
         plt.close("all")
+        if self.vtk_win is not None:
+            self.vtk_win.Finalize()
+            self.vtk_win = None
         self.psg = None
         self.ch.configure(values=[], state="disabled")
         self.ch.set("")
@@ -225,15 +264,14 @@ class App(tk.Tk):
         else:
             self.cbct = data
             self._cbct_slices(pid)
-            frame = ttk.Frame(self.nb)
-            ttk.Button(frame, text="3D 표면 만들기 (10~30초)", command=lambda: self._cbct_3d(frame)).pack(pady=20)
-            self.nb.add(frame, text="3D 표면")
+            self._cbct_3d(pid)
             self._msg(f"P_{pid} CBCT: {' × '.join(map(str, data.rescaled.shape))}, voxel {data.voxel_size_mm[0]:.2f} mm")
 
     # ---------------------------------------------------------- CBCT 단면
     def _cbct_slices(self, pid):
         v = self.cbct.rescaled
         nr, nc, ns = v.shape
+        ali = ali_points(self.cbct, pid)                     # 없으면 None (자동 처리 안 된 환자)
         fig = Figure(figsize=(8, 4), constrained_layout=True)
         axes = [fig.add_subplot(1, 3, i + 1) for i in range(3)]
         lo, hi = WINDOWS["뼈 (−500~2000)"]
@@ -252,6 +290,43 @@ class App(tk.Tk):
         canvas = FigureCanvasTkAgg(fig, master=frame)
         canvas.get_tk_widget().pack(fill="both", expand=True)
 
+        # ALI 겹쳐 그리기: 단면마다 (고정 축, 가로 축, 세로 축), 배열 번호 축 = (열, 행, 슬라이스)
+        view_ax = {"axial": (2, 0, 1), "coronal": (1, 0, 2), "sagittal": (0, 1, 2)}
+        dims, sp = (nc, nr, ns), (self.cbct.voxel_size_mm[1], self.cbct.voxel_size_mm[0], self.cbct.voxel_size_mm[2])
+        show_pts, show_lines = tk.BooleanVar(value=True), tk.BooleanVar(value=True)
+        drawn = {k: [] for k in pos}
+
+        def overlay(k):
+            ax = axes[list(pos).index(k)]
+            for a in drawn[k]:
+                a.remove()
+            drawn[k] = []
+            if ali is None:
+                return
+            f, xa, ya = view_ax[k]
+            pts, planes = ali
+            if show_lines.get():
+                for name, (n, d) in planes.items():
+                    if abs(n[f]) / np.linalg.norm(n) > 0.9:      # 단면과 거의 나란한 평면(시상의 MSP, 축상의 FH)은 교선이 무의미
+                        continue
+                    c = "tomato" if name == "FH" else "deepskyblue"
+                    if abs(n[ya]) > 1e-9:
+                        xs = np.array([0, dims[xa] - 1])
+                        line = ax.plot(xs, (d - n[f] * pos[k] - n[xa] * xs) / n[ya], "--", color=c, lw=1)
+                    else:
+                        x = (d - n[f] * pos[k]) / n[xa]
+                        line = ax.plot([x, x], [0, dims[ya] - 1], "--", color=c, lw=1)
+                    drawn[k] += line + [ax.text(0.01, 0.97 - 0.05 * len(drawn[k]), name, color=c, fontsize=8,
+                                                transform=ax.transAxes, va="top")]
+            if show_pts.get():
+                for name, q in pts.items():
+                    if abs(q[f] - pos[k]) * sp[f] <= 3:          # 지금 단면에서 3 mm 안의 점만
+                        c = ALI_COLOR(name)
+                        drawn[k] += ax.plot(q[xa], q[ya], "o", ms=5, mfc=c, mec="black", mew=0.5)
+                        drawn[k].append(ax.text(q[xa] + 6, q[ya], name, color=c, fontsize=8))
+            ax.set_xlim(-0.5, dims[xa] - 0.5)
+            ax.set_ylim((dims[ya] - 0.5, -0.5) if k == "axial" else (-0.5, dims[ya] - 0.5))
+
         def update(k, val):
             pos[k] = int(float(val))
             img = {"axial": lambda i: v[:, :, i], "coronal": lambda i: v[i, :, :].T,
@@ -259,13 +334,38 @@ class App(tk.Tk):
             idx = list(pos).index(k)
             ims[idx].set_data(img)
             axes[idx].set_title(f"{names[k]}  {pos[k] + 1}")
+            overlay(k)
             canvas.draw_idle()
 
+        sliders = {}
         for k, n in (("axial", ns), ("coronal", nr), ("sagittal", nc)):
             ttk.Label(ctl, text=names[k]).pack(side="left", padx=(10, 2))
             s = ttk.Scale(ctl, from_=0, to=n - 1, length=220, command=lambda val, k=k: update(k, val))
             s.set(pos[k])
             s.pack(side="left")
+            sliders[k] = s
+
+        ctl2 = ttk.Frame(frame)
+        ctl2.pack(fill="x", before=canvas.get_tk_widget())
+        if ali is None:
+            ttk.Label(ctl2, text="ALI 측정점: 자동 처리 결과 없음", foreground="#555").pack(side="left", padx=10)
+        else:
+            redraw = lambda: ([overlay(k) for k in pos], canvas.draw_idle())
+            ttk.Checkbutton(ctl2, text="ALI 측정점 (단면 ±3 mm)", variable=show_pts, command=redraw).pack(side="left", padx=10)
+            ttk.Checkbutton(ctl2, text="FH·MSP 선", variable=show_lines, command=redraw).pack(side="left", padx=4)
+            ttk.Label(ctl2, text="측정점으로 이동").pack(side="left", padx=(16, 2))
+            jump = ttk.Combobox(ctl2, values=list(ali[0]), width=10, state="readonly")
+            jump.pack(side="left")
+
+            def go(_):
+                q = ali[0][jump.get()]                       # 세 단면이 모두 이 점을 지나게
+                for k, (f, _, _) in view_ax.items():
+                    sliders[k].set(int(round(np.clip(q[f], 0, dims[f] - 1))))
+            jump.bind("<<ComboboxSelected>>", go)
+            ttk.Label(ctl2, foreground="#555", text="빨강 = 좌표계 점 (RPo·LPo·ROr = FH, N·Ba = MSP), 노랑 = 계측점, "
+                      "하늘 = 나머지 | 점선: 빨강 FH, 파랑 MSP").pack(side="left", padx=16)
+            for k in pos:
+                overlay(k)
         ttk.Label(ctl, text="창 설정").pack(side="left", padx=(20, 2))
         wsel = ttk.Combobox(ctl, values=list(WINDOWS), width=18, state="readonly")
         wsel.current(0)
@@ -282,36 +382,107 @@ class App(tk.Tk):
         canvas.draw()
         self.nb.add(frame, text="단면")
 
-    # ---------------------------------------------------------- CBCT 3D
-    def _cbct_3d(self, frame, threshold=400, max_faces=250_000):
-        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-        from skimage.measure import marching_cubes
-        for w in frame.winfo_children():
-            w.destroy()
-        d = self.cbct
-        sp = d.voxel_size_mm
-        step = 2
-        small = d.rescaled[::step, ::step, ::step]
-        s = 1
-        verts, faces, _, _ = marching_cubes(small, threshold, step_size=s, spacing=tuple(sp * step))
-        while len(faces) > max_faces:
-            s += 1
-            verts, faces, _, _ = marching_cubes(small, threshold, step_size=s, spacing=tuple(sp * step))
-        # (row=뒤쪽+, col=왼쪽+, slice=위쪽+) → 화면 (x=좌우, y=앞뒤, z=위아래)
-        xyz = verts[:, [1, 0, 2]]
-        fig = Figure(figsize=(6, 5), constrained_layout=True)
-        ax = fig.add_subplot(projection="3d")
-        ax.add_collection3d(Poly3DCollection(xyz[faces], facecolors=[(0.90, 0.86, 0.76)], linewidths=0,
-                                             shade=True, lightsource=matplotlib.colors.LightSource(azdeg=225, altdeg=45)))
-        lo, hi = xyz.min(0), xyz.max(0)
-        ax.set_xlim(lo[0], hi[0]); ax.set_ylim(lo[1], hi[1]); ax.set_zlim(lo[2], hi[2])
-        ax.set_box_aspect(hi - lo)
-        ax.view_init(elev=10, azim=-60)     # 앞쪽(−y)에서 비스듬히: 얼굴이 보임, 환자 왼쪽이 화면 오른쪽
-        ax.set_axis_off()
-        ax.set_title(f"뼈 표면 (≥ {threshold} HU) · 마우스로 회전")
-        canvas = FigureCanvasTkAgg(fig, master=frame)
-        canvas.get_tk_widget().pack(fill="both", expand=True)
-        canvas.draw()
+    # ---------------------------------------------------------- CBCT 3D (AMASSS 분할 + SSM 대응점, VTK)
+    def _cbct_3d(self, pid):
+        """VTK 화면을 탭 안의 Frame에 자식 창으로 붙임. 처음 탭을 열 때 만들고 데이터는 백그라운드에서 읽음.
+        ALI 측정점은 [단면] 탭에 겹쳐 그림."""
+        import vtk
+        from cbct3d_viewer import NAMES, QC_COLORS, VIEWS, Scene, patients as processed
+        frame = ttk.Frame(self.nb)
+        self.nb.add(frame, text="3D 분할 (AMASSS)")
+        if pid not in processed():
+            ttk.Label(frame, text=f"P_{pid}는 자동 분할(AMASSS) 결과가 없습니다 (Result_py/CBCT).").pack(pady=20)
+            return
+        st = {"scene": None}
+        sc = lambda: st["scene"]
+
+        row1, row2, row3 = ttk.Frame(frame), ttk.Frame(frame), ttk.Frame(frame)
+        for r in (row1, row2, row3):
+            r.pack(fill="x", padx=6, pady=2)
+        head = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row1, text="머리 좌표계로 정렬 (Jung FH·MSP)", variable=head,
+                        command=lambda: sc() and (setattr(sc(), "head", head.get()), sc().apply(), sc().view("비스듬히"))
+                        ).pack(side="left", padx=(4, 4))
+        ttk.Label(row1, text="시점").pack(side="left", padx=(16, 2))
+        for name in VIEWS:
+            ttk.Button(row1, text=name, width=8, command=lambda n=name: sc() and sc().view(n)).pack(side="left")
+
+        def check(key, text):
+            v = tk.BooleanVar(value=key not in ("ssm_CB", "ct"))
+
+            def toggle():
+                if sc():
+                    sc().show[key] = v.get()
+                    sc().apply()
+            ttk.Checkbutton(row2, text=text, variable=v, command=toggle).pack(side="left", padx=4)
+
+        for s in QC_COLORS:
+            check(s, NAMES[s])
+        check("ssm_MAND", "하악 대응점")
+        check("ssm_CB", "두개저 대응점")
+        check("ct", "CT 단면")
+        ttk.Label(row2, text="창 설정").pack(side="left", padx=(16, 2))
+        wsel = ttk.Combobox(row2, values=list(WINDOWS), width=18, state="readonly")
+        wsel.current(0)
+        wsel.pack(side="left")
+        wsel.bind("<<ComboboxSelected>>", lambda e: sc() and sc().set_window(*WINDOWS[wsel.get()]))
+        sliders = []
+        for axis, t in enumerate(("CT 시상 (좌우)", "관상 (앞뒤)", "축상 (위아래)")):
+            ttk.Label(row3, text=t).pack(side="left", padx=(10, 2))
+            s = ttk.Scale(row3, from_=0, to=1, length=220, command=lambda val, a=axis: sc() and sc().set_slice(a, val))
+            s.pack(side="left")
+            sliders.append(s)
+        ttk.Label(frame, foreground="#555", text="하악 빨강 · 상악 파랑 · 두개저 초록 · 상기도 노랑 | "
+                  "대응점 색 = 평균 형태 위치 (같은 색 = 사람마다 같은 대응점)").pack(fill="x", padx=8)
+        qc = ttk.Label(frame, foreground="#a15c00", justify="left")
+        qc.pack(fill="x", padx=8)
+
+        view = tk.Frame(frame, background="black")
+        view.pack(fill="both", expand=True)
+
+        def start(_):
+            if st["scene"] is not None or "rw" in st:
+                return
+            rw = vtk.vtkRenderWindow()
+            rw.SetParentInfo(str(view.winfo_id()))              # 탭 안 Frame의 자식 창으로
+            rw.SetSize(max(view.winfo_width(), 100), max(view.winfo_height(), 100))
+            iren = vtk.vtkRenderWindowInteractor()
+            iren.SetRenderWindow(rw)
+            iren.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
+            iren.Initialize()                                    # 이벤트는 tk 메인 루프가 함께 돌림 (Start 안 함)
+            st.update(rw=rw, iren=iren)
+            self.vtk_win = rw
+            self._msg(f"P_{pid} 3D 읽는 중… (몇 초)")
+
+            def work():
+                try:
+                    data = Scene.read(pid)
+                    self.after(0, lambda: ready(data))
+                except Exception as e:
+                    self.after(0, lambda e=e: self._msg(f"3D 읽기 실패: {e}"))
+            threading.Thread(target=work, daemon=True).start()
+
+        def ready(data):
+            if st.get("rw") is not self.vtk_win:                 # 그사이 다른 환자를 열었으면 버림
+                return
+            s = Scene(st["rw"])
+            s.head = head.get()
+            s.build(data)
+            s.set_window(*WINDOWS[wsel.get()])
+            for axis, sl in enumerate(sliders):
+                sl.configure(to=s.dims[axis] - 1)
+                sl.set(s.pos[axis])
+            qc.configure(text=s.qc_text())
+            st["scene"] = s
+            self._msg(f"P_{pid} 3D 준비됨. 마우스 왼쪽 = 회전, 오른쪽·휠 = 확대, 가운데 = 이동")
+
+        def resize(e):
+            if "rw" in st:
+                st["rw"].SetSize(e.width, e.height)
+                st["rw"].Render()
+
+        view.bind("<Map>", start)
+        view.bind("<Configure>", resize)
 
 
 if __name__ == "__main__":

@@ -39,17 +39,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("ids", nargs="+")
     ap.add_argument("--lm", nargs="*")
+    ap.add_argument("--models", type=Path, default=MODELS, help="모델 폴더 (치아 모델은 models/ali_cbct_teeth)")
+    ap.add_argument("--out", type=Path, default=OUT, help="Result_py/CBCT 아래 출력 폴더")
     a = ap.parse_args()
     lms = a.lm or available()
-    assert lms, f"모델이 없습니다: {MODELS}"
+    assert lms, f"모델이 없습니다: {a.models}"
     env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(SADT / "ALI_CBCT"), str(SADT / "ADT")])}
-    OUT.mkdir(parents=True, exist_ok=True)
+    a.out.mkdir(parents=True, exist_ok=True)
     for pid in a.ids:
         scan = NRRD / f"P_{pid}.nrrd"
         assert scan.exists(), f"먼저 export_nrrd.py {pid}"
         tmp = ROOT / f"Result_py/CBCT/ali_tmp/P_{pid}"
-        cmd = [sys.executable, str(SADT / "ALI_CBCT/ALI_CBCT.py"), str(ascii_path(scan)), str(MODELS),
-               ",".join(f"'{x}'" for x in lms), str(ascii_path(OUT)), str(ascii_path(tmp)), "false",
+        cmd = [sys.executable, str(SADT / "ALI_CBCT/ALI_CBCT.py"), str(ascii_path(scan)), str(a.models),
+               ",".join(f"'{x}'" for x in lms), str(ascii_path(a.out)), str(ascii_path(tmp)), "false",
                "[1,0.3]", "[1,1]", "[64,64,64]", "10"]
         print(f"P_{pid}: 랜드마크 {len(lms)}개", flush=True)
         subprocess.run(cmd, env=env, check=True)
