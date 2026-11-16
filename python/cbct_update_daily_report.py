@@ -23,6 +23,14 @@ def managed(html, key, content, anchor):
 
 
 def update_html(html):
+    has_editor='id="report-editor-toolbar"' in html
+    if has_editor:
+        from cbct_report_editor import strip_editor
+        html=strip_editor(html)
+    has_glossary = 'id="cbct-glossary-style"' in html
+    if has_glossary:
+        from cbct_report_glossary import strip_glossary
+        html = strip_glossary(html)
     doctype = html.lower().find("<!doctype html>")
     assert doctype >= 0
     if doctype:
@@ -114,6 +122,12 @@ def update_html(html):
     if '<!-- COHORT_TABS_START -->' in html:
         from cbct_report_cohorts import build_tabs
         html = build_tabs(html)
+    if has_glossary:
+        from cbct_report_glossary import apply_glossary
+        html = apply_glossary(html)
+    if has_editor:
+        from cbct_report_editor import apply_editor
+        html=apply_editor(html)
     return html
 
 

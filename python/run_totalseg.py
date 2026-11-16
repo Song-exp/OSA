@@ -27,7 +27,10 @@ def main():
         dst = out/f"P_{pid}.nii.gz"
         if dst.exists(): continue
         src = work/f"P_{pid}.nii.gz"
-        if not src.exists(): sitk.WriteImage(sitk.ReadImage(str(ascii_path(CB/f"nrrd/P_{pid}.nrrd"))), str(ascii_path(src)), useCompression=True)
+        if not src.exists():    # 임시 이름으로 다 쓴 뒤 바꿔, 중단돼도 잘린 파일이 재사용되지 않게 한다
+            tmp = work/f"P_{pid}.tmp.nii.gz"
+            sitk.WriteImage(sitk.ReadImage(str(ascii_path(CB/f"nrrd/P_{pid}.nrrd"))), str(ascii_path(tmp)), useCompression=True)
+            tmp.replace(src)
         totalsegmentator(str(ascii_path(src)), str(ascii_path(dst)), task=task, ml=True, device="gpu", quiet=True)
         print(f"P_{pid} done", flush=True)
 

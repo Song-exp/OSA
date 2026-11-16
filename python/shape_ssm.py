@@ -173,6 +173,7 @@ def main():
     ap.add_argument("--struct", default="MAND")
     ap.add_argument("--n", type=int, default=2048)
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--template-id", type=int, help="템플릿 환자 고정 (환자 추가 때 기존 템플릿·대응점 캐시를 유지)")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
@@ -188,7 +189,7 @@ def main():
         s, P = surface(p, a.struct)
         mframe[p], hframe[p], lms[p] = midline_frame(P), head_frame(P), P
         sizes[p], npts[p] = np.sqrt(((s - s.mean(0)) ** 2).sum(1).mean()), len(s)
-    tpl_id = sorted(sizes, key=sizes.get)[len(sizes) // 2]   # ponytail: 중앙 크기 환자 1명을 템플릿으로. 평균 형태로 반복 갱신은 표본이 늘면 추가
+    tpl_id = a.template_id if a.template_id is not None else sorted(sizes, key=sizes.get)[len(sizes) // 2]   # ponytail: 중앙 크기 환자 1명을 템플릿으로. 평균 형태로 반복 갱신은 표본이 늘면 추가
     tpl_lps = subsample(surface(tpl_id, a.struct)[0], a.n)
     template = to_frame(tpl_lps, mframe[tpl_id])
     # 대응점 검증: 템플릿에서 랜드마크에 가장 가까운 대응점이 각 환자에서 그 환자의 ALI 랜드마크와 몇 mm 떨어지는지

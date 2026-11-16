@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   window.addEventListener('hashchange', followHash);
-  if (!followHash()) select('inquiry');
+  if (!followHash()) select(['inquiry','analysis'].includes(document.body.dataset.reportInitialCohort) ? document.body.dataset.reportInitialCohort : 'inquiry');
 });
 // COHORT_TABS_SCRIPT_END'''
 
@@ -174,6 +174,14 @@ def analysis_index(included):
 
 
 def build_tabs(html):
+    has_editor='id="report-editor-toolbar"' in html
+    if has_editor:
+        from cbct_report_editor import strip_editor
+        html=strip_editor(html)
+    has_glossary = 'id="cbct-glossary-style"' in html
+    if has_glossary:
+        from cbct_report_glossary import strip_glossary
+        html = strip_glossary(html)
     cohort = pd.read_csv(BASE / "cohort.csv", keep_default_na=False)
     assert len(cohort) == 87 and not cohort.Patient.duplicated().any()
     selected = cohort.Include.astype(str).str.lower().isin(["true", "1"])
@@ -228,6 +236,12 @@ def build_tabs(html):
     result = re.sub(r'<title>.*?</title>', '<title>CBCT 작업 보고서 · 문의·검토 33명 / 분석 54명</title>', result, count=1)
     assert result.count('data-inquiry-patient=') == 33
     assert result.count('data-analysis-patient=') == 54
+    if has_glossary:
+        from cbct_report_glossary import apply_glossary
+        result = apply_glossary(result)
+    if has_editor:
+        from cbct_report_editor import apply_editor
+        result=apply_editor(result)
     return result
 
 

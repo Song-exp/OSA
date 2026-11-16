@@ -37,27 +37,34 @@ def volume(vol, Ls, ant, sup, s, keep):
     return m, (float(m.sum())*pm.STEP**3 if m is not None else np.nan)
 
 
+def measure(e, xl):
+    """Eb 후보 한 행 → (결과 행, 그림 자료 또는 None)."""
+    pid = int(e.Patient[2:]); r = {"Patient": e.Patient, "Eb_method": e.method, "PAV_xl": xl.get(pid, np.nan), "Set": "pilot" if pid in PILOT else "eval"}
+    if e.method == "none": return r, None
+    P = repair(landmarks(pid)[0])[0]; v, dirs, org = read_nrrd(CB/f"nrrd/P_{pid}.nrrd"); v = v.astype(np.float32)
+    o, R, _ = midline_frame(P); s = R@(P["S"]-o); fh = R@head_frame(P)[1][2]; eb_m = np.array([0., e.Eb_ant, e.Eb_sup])
+    r["FH_vs_midline_deg"] = float(np.degrees(np.arccos(np.clip(abs(fh[2])/np.linalg.norm(fh), 0, 1))))
+    Ls = np.arange(-pm.HALF_L, pm.HALF_L+1e-9, pm.STEP); ant = np.arange(pm.ANT[0], pm.ANT[1]+1e-9, pm.STEP); sup = np.arange(e.Eb_sup-BELOW, pm.TOP+1e-9, pm.STEP)
+    G = np.stack(np.meshgrid(Ls, ant, sup, indexing="ij"), -1).reshape(-1, 3)
+    vol = map_coordinates(v, np.linalg.solve(dirs.T, (o+G@R-org).T)[::-1], order=1, cval=0).reshape(len(Ls), len(ant), len(sup))
+    fh_up = fh if fh[2] > 0 else -fh
+    m, r["PAV_fh"] = volume(vol, Ls, ant, sup, s, above_plane(Ls, ant, sup, eb_m, fh_up))
+    _, r["PAV_midline"] = volume(vol, Ls, ant, sup, s, above_plane(Ls, ant, sup, eb_m, np.array([0., 0., 1.])))
+    r["touches_image_bottom"] = bool(m is not None and m[..., 0].any())
+    img = None
+    if m is not None and (r["PAV_xl"] == r["PAV_xl"] or pid in PILOT):
+        A, Z = np.meshgrid(np.arange(-70, 40, .4), np.arange(-95, 35, .4), indexing="ij"); Q = np.stack([0*A, A, Z], -1).reshape(-1, 3)
+        img = (map_coordinates(v, np.linalg.solve(dirs.T, (o+Q@R-org).T)[::-1], order=1, cval=-1000).reshape(A.shape), m.any(0), ant, sup, s, eb_m, fh_up, r["PAV_fh"], r["PAV_xl"])
+    return r, img
+
+
 def main():
     DEST.mkdir(parents=True, exist_ok=True); xl = excel_col(XL_PAV)
     eb = pd.read_csv(OUT/"eb_review/v2/eb_candidates.csv", encoding="utf-8-sig"); rows, imgs = [], {}
     for _, e in eb.iterrows():
-        pid = int(e.Patient[2:]); r = {"Patient": e.Patient, "Eb_method": e.method, "PAV_xl": xl.get(pid, np.nan), "Set": "pilot" if pid in PILOT else "eval"}
-        if e.method == "none": rows.append(r); continue
-        print(pid, end=" ", flush=True)
-        P = repair(landmarks(pid)[0])[0]; v, dirs, org = read_nrrd(CB/f"nrrd/P_{pid}.nrrd"); v = v.astype(np.float32)
-        o, R, _ = midline_frame(P); s = R@(P["S"]-o); fh = R@head_frame(P)[1][2]; eb_m = np.array([0., e.Eb_ant, e.Eb_sup])
-        r["FH_vs_midline_deg"] = float(np.degrees(np.arccos(np.clip(abs(fh[2])/np.linalg.norm(fh), 0, 1))))
-        Ls = np.arange(-pm.HALF_L, pm.HALF_L+1e-9, pm.STEP); ant = np.arange(pm.ANT[0], pm.ANT[1]+1e-9, pm.STEP); sup = np.arange(e.Eb_sup-BELOW, pm.TOP+1e-9, pm.STEP)
-        G = np.stack(np.meshgrid(Ls, ant, sup, indexing="ij"), -1).reshape(-1, 3)
-        vol = map_coordinates(v, np.linalg.solve(dirs.T, (o+G@R-org).T)[::-1], order=1, cval=0).reshape(len(Ls), len(ant), len(sup))
-        fh_up = fh if fh[2] > 0 else -fh
-        m, r["PAV_fh"] = volume(vol, Ls, ant, sup, s, above_plane(Ls, ant, sup, eb_m, fh_up))
-        _, r["PAV_midline"] = volume(vol, Ls, ant, sup, s, above_plane(Ls, ant, sup, eb_m, np.array([0., 0., 1.])))
-        r["touches_image_bottom"] = bool(m is not None and m[..., 0].any())
-        rows.append(r)
-        if m is not None and (r["PAV_xl"] == r["PAV_xl"] or pid in PILOT):
-            A, Z = np.meshgrid(np.arange(-70, 40, .4), np.arange(-95, 35, .4), indexing="ij"); Q = np.stack([0*A, A, Z], -1).reshape(-1, 3)
-            imgs[pid] = (map_coordinates(v, np.linalg.solve(dirs.T, (o+Q@R-org).T)[::-1], order=1, cval=-1000).reshape(A.shape), m.any(0), ant, sup, s, eb_m, fh_up, r["PAV_fh"], r["PAV_xl"])
+        if e.method != "none": print(int(e.Patient[2:]), end=" ", flush=True)
+        r, img = measure(e, xl); rows.append(r)
+        if img is not None: imgs[int(e.Patient[2:])] = img
     print(); d = pd.DataFrame(rows); d.round(2).to_csv(DEST/"pav.csv", index=False, encoding="utf-8-sig")
     n = int(np.ceil(len(imgs)/5)); fig, ax = plt.subplots(n, 5, figsize=(30, 6.5*n), squeeze=False)
     for a in ax.flat: a.axis("off")

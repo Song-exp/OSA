@@ -66,26 +66,33 @@ def pick(area, sup, lo, hi):
     return float(area[i]), float(sup[i])
 
 
+def measure(e):
+    """Eb 후보 한 행 → (결과 행, 그림 자료 또는 None)."""
+    pid = int(e.Patient[2:])
+    r = {"Patient": e.Patient, "Eb_method": e.method, "Eb_sup": e.Eb_sup}
+    if e.method == "none": return r, None
+    P = landmarks(pid)[0]; v, dirs, org = read_nrrd(CB/f"nrrd/P_{pid}.nrrd"); v = v.astype(np.float32)
+    o, R, _ = midline_frame(P); s = R@(P["S"]-o)
+    Ls = np.arange(-HALF_L, HALF_L+1e-9, STEP); ant = np.arange(ANT[0], ANT[1]+1e-9, STEP); sup = np.arange(e.Eb_sup, TOP+1e-9, STEP)
+    G = np.stack(np.meshgrid(Ls, ant, sup, indexing="ij"), -1).reshape(-1, 3)
+    vol = map_coordinates(v, np.linalg.solve(dirs.T, (o+G@R-org).T)[::-1], order=1, cval=0).reshape(len(Ls), len(ant), len(sup))
+    m = airway(vol, Ls, ant, sup, s[1], s[2])
+    if m is None: r["note"] = "no_airway"; return r, None
+    ax, pe, _ = sections(m, Ls, ant, sup)
+    r["PMCA_center"], r["z_center"] = pick(pe, sup, e.Eb_sup+BOTTOM_CENTER, 0.0)
+    r["PMCA_axial"], r["z_axial"] = pick(ax, sup, e.Eb_sup+BOTTOM_AXIAL, 0.0)
+    r["min_at_bottom_center"] = bool(r["z_center"]-(e.Eb_sup+BOTTOM_CENTER) < 3)
+    r["min_at_bottom_axial"] = bool(r["z_axial"]-(e.Eb_sup+BOTTOM_AXIAL) < 3)
+    return r, (m.sum(0), ant, sup, r["z_center"], r["z_axial"])
+
+
 def main():
     DEST.mkdir(parents=True, exist_ok=True)
     eb = pd.read_csv(OUT/"eb_review/v2/eb_candidates.csv", encoding="utf-8-sig"); rows, imgs = [], {}
     for _, e in eb.iterrows():
-        pid = int(e.Patient[2:]); print(pid, flush=True)
-        r = {"Patient": e.Patient, "Eb_method": e.method, "Eb_sup": e.Eb_sup}
-        if e.method == "none": rows.append(r); continue
-        P = landmarks(pid)[0]; v, dirs, org = read_nrrd(CB/f"nrrd/P_{pid}.nrrd"); v = v.astype(np.float32)
-        o, R, _ = midline_frame(P); s = R@(P["S"]-o)
-        Ls = np.arange(-HALF_L, HALF_L+1e-9, STEP); ant = np.arange(ANT[0], ANT[1]+1e-9, STEP); sup = np.arange(e.Eb_sup, TOP+1e-9, STEP)
-        G = np.stack(np.meshgrid(Ls, ant, sup, indexing="ij"), -1).reshape(-1, 3)
-        vol = map_coordinates(v, np.linalg.solve(dirs.T, (o+G@R-org).T)[::-1], order=1, cval=0).reshape(len(Ls), len(ant), len(sup))
-        m = airway(vol, Ls, ant, sup, s[1], s[2])
-        if m is None: r["note"] = "no_airway"; rows.append(r); continue
-        ax, pe, _ = sections(m, Ls, ant, sup)
-        r["PMCA_center"], r["z_center"] = pick(pe, sup, e.Eb_sup+BOTTOM_CENTER, 0.0)
-        r["PMCA_axial"], r["z_axial"] = pick(ax, sup, e.Eb_sup+BOTTOM_AXIAL, 0.0)
-        r["min_at_bottom_center"] = bool(r["z_center"]-(e.Eb_sup+BOTTOM_CENTER) < 3)
-        r["min_at_bottom_axial"] = bool(r["z_axial"]-(e.Eb_sup+BOTTOM_AXIAL) < 3)
-        rows.append(r); imgs[pid] = (m.sum(0), ant, sup, r["z_center"], r["z_axial"])
+        print(int(e.Patient[2:]), flush=True)
+        r, img = measure(e); rows.append(r)
+        if img is not None: imgs[int(e.Patient[2:])] = img
     d = pd.DataFrame(rows); d.round(2).to_csv(DEST/"pmca_candidates.csv", index=False, encoding="utf-8-sig")
     fig, ax = plt.subplots(6, 9, figsize=(36, 30))
     for a in ax.flat: a.axis("off")

@@ -305,6 +305,14 @@ def main():
 {END}
 '''
     html = REPORT.read_text(encoding="utf-8")
+    has_editor='id="report-editor-toolbar"' in html
+    if has_editor:
+        from cbct_report_editor import strip_editor
+        html=strip_editor(html)
+    has_glossary = 'id="cbct-glossary-style"' in html
+    if has_glossary:
+        from cbct_report_glossary import strip_glossary
+        html = strip_glossary(html)
     if START in html:
         html = re.sub(re.escape(START)+r".*?"+re.escape(END)+r"\s*", "", html, flags=re.S)
     by_metric = {spec[0]: card for spec, card in zip(specs, cards)}
@@ -387,6 +395,12 @@ def main():
     assert not re.search(r'\bns\d+:href=', html), "Unsupported href prefix in inline HTML SVG"
     after = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in BASE.glob("P_*/result.json")}
     assert before == after, "Original result files changed"
+    if has_glossary:
+        from cbct_report_glossary import apply_glossary
+        REPORT.write_text(apply_glossary(REPORT.read_text(encoding="utf-8")), encoding="utf-8")
+    if has_editor:
+        from cbct_report_editor import apply_editor
+        REPORT.write_text(apply_editor(REPORT.read_text(encoding="utf-8")),encoding="utf-8")
     print(pd.DataFrame(summaries).round(3).to_string(index=False))
     print(f"Updated: {REPORT}\nValidated plots and hover values: {len(specs)}; original result files unchanged: {len(before)}")
 

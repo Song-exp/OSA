@@ -29,6 +29,8 @@ FIXED_MM = {"U": 7.5, "L": 6.0}    # 대체 단계: 분지부를 찾은 치아�
 MIN_CROWN_MM = 3.   # 최대 단면에서 분지부까지 이보다 짧으면 치관이 분할되지 않은 것으로 본다
 BONE_MAX_LABEL = 55    # 치아 1~52, 하악 53, 상악 54, 하악관 55 (그 위 라벨은 쓰지 않음)
 WIDTH, MAX_DZ = (35., 70.), 6.    # 좌우 저항중심 폭·높이 차의 해부학적 범위(mm)
+MAX_DA = 8.    # 좌우 제1대구치 앞뒤 차이 상한(mm). 넘으면 한쪽에 옆 치아 라벨이 붙은 것으로 본다 (중앙값 위 1.0·아래 1.6 mm)
+ALI_NEIGHBOR = (4., 15.)    # ALI 치아 R점과 분할 치아 거리가 이 범위면 옆 치아에 라벨이 붙은 것으로 본다. 15 mm 넘으면 ALI 점 쪽 오류라 판단에 쓰지 않음
 PILOT = (5, 7, 9, 24, 30, 32, 41, 44, 50, 54, 60, 69)    # docs/CBCT_측정_계획.md 7-6
 
 
@@ -84,6 +86,7 @@ def measure(pid):
         if not f and not r.get("d_R", np.inf) <= 2.: fixed = None    # 대체값은 ALI R이 같은 치아 분할 2 mm 안일 때만(치아 식별 교차 확인)
         r["method"] = "furcation" if f else ("fixed_level" if fixed is not None else "missing")
         r["status"] = "ok" if r["method"] != "missing" else "missing_or_partial"
+        if r["status"] == "ok" and ALI_NEIGHBOR[0] < r.get("d_R", np.nan) <= ALI_NEIGHBOR[1]: r["status"] = "label_suspect"    # 분지부를 찾은 치아도 번호 교차 확인
         if fixed is not None: r["fixed_L"] = fixed[0]
         if f or fixed is not None:
             c = f[0] if f else fixed
@@ -101,7 +104,7 @@ def measure(pid):
 
 def pair_ok(a, b):
     """좌우 치아 쌍의 해부학적 범위. 벗어나면 치아 라벨 오류로 본다."""
-    return WIDTH[0] <= a.L-b.L <= WIDTH[1] and abs(a.Z-b.Z) <= MAX_DZ
+    return WIDTH[0] <= a.L-b.L <= WIDTH[1] and abs(a.Z-b.Z) <= MAX_DZ and abs(a.A-b.A) <= MAX_DA
 
 
 def widths(g):
