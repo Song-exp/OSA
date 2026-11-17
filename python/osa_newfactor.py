@@ -39,7 +39,7 @@ STEP3 = {**{k: SAG for k in ("Pog_Ba_ant", "SNB", "SNA", "Pog_PNS_ant", "PNS_B_a
          **{k: VER for k in ("PP_MP", "SN_MP", "LAFH_ratio", "VERT_Z", "gonial", "Jarabak", "ANS_Me", "N_Me", "S_Go", "Co_Go", "ramus_body", "Yaxis", "FacialAxis_proxy", "F1_PC4", "overbite_mm")},
          **{k: TRA for k in ("upper_width_M1", "lower_width_M1", "InterGonial", "Upper_Taper", "upper_depth", "m_PHI", "m_NCWR")},
          **{k: None for k in ("SIZE_PC1", "SIZE_MAND", "SIZE_MAX", "SIZE_CB", "S_N", "S_Ba", "NSBa", "ANS_PNS", "PNS_Ba_depth", "Co_A", "palate_cb", "mand_cb", "logCS_all", "AlloShape",
-                              "Atyp_D2", "Atyp_Procrustes", "PLS_t1", "MaxPost_Clivus_ant")}}
+                              "Atyp_D2", "Atyp_Procrustes", "MaxPost_Clivus_ant")}}      # PLS_t1은 사용자 결정으로 제외(2026-11-17)
 
 # Step 3 변수 출처 구분 (색): ① 고전 두부계측 ② Roh 지표(Step 1 모델 밖) ③ 자체 3D 기준점 지표 ④ 형상 요약값
 KIND3 = {**{k: "c1" for k in ("SNA", "SNB", "S_N", "S_Ba", "NSBa", "ANS_PNS", "N_Me", "ANS_Me", "S_Go", "Co_Gn", "Co_A", "Co_Go", "Go_Me", "gonial", "PP_MP", "SN_MP",
@@ -47,7 +47,7 @@ KIND3 = {**{k: "c1" for k in ("SNA", "SNB", "S_N", "S_Ba", "NSBa", "ANS_PNS", "N
                                "InterGonial", "Upper_Taper", "upper_depth", "ramus_body", "palate_cb", "mand_cb")},
          **{k: "c2" for k in ("m_NperpPog", "m_NperpA", "m_PHI", "m_NCWR")},
          **{k: "c3" for k in ("Pog_Ba_ant", "Pog_PNS_ant", "PNS_B_ant", "PNS_Ba_depth", "body_len", "body_len_res", "MaxPost_Clivus_ant")},
-         **{k: "c4" for k in ("F1_PC1", "F1_PC4", "SIZE_PC1", "SIZE_MAND", "SIZE_MAX", "SIZE_CB", "logCS_all", "AlloShape", "Atyp_D2", "Atyp_Procrustes", "PLS_t1", "VERT_Z")}}
+         **{k: "c4" for k in ("F1_PC1", "F1_PC4", "SIZE_PC1", "SIZE_MAND", "SIZE_MAX", "SIZE_CB", "logCS_all", "AlloShape", "Atyp_D2", "Atyp_Procrustes", "VERT_Z")}}
 KIND_LAB = {"c1": ("고전 두부계측 (선행연구 기준 계측값)", "#2563eb", "#e6efff"), "c2": ("Roh 지표 중 Step 1 모델 밖", "#7c3aed", "#f1e9ff"),
             "c3": ("자체 3D 기준점 지표 (골격 위치 벡터 기반)", "#059669", "#e3f7ee"), "c4": ("형상 요약값 (AMASSS 대응점 PC·크기·PLS 등)", "#d97706", "#fff1dc")}
 
@@ -70,11 +70,22 @@ def step4(d):
     names += [c for c in d if c.startswith("roi_")]
     return {k: None for k in dict.fromkeys(names) if k in d and k not in skip}
 
+# Step 1 (2026-11-17 사용자 결정): Roh 2025 Table 1의 CBCT 지표 11개 전부를 한 모델에. 엑셀 결측은 복원값으로, 복원값 결측은 엑셀 값으로 채움
+R11 = ["ANB", "Nperp-A", "Nperp-Pog", "MP-FH", "TDI", "PHI", "NCWR", "NAV", "PAV", "PMCA", "PAL"]
+X11 = dict(zip(R11, ["x_ANB", "x_NperpA", "x_NperpPog", "x_MPFH", "x_TDI", "x_PHI", "x_NCWR", "x_NAV", "x_PAV", "x_PMCA", "x_PAL"]))
+M11 = dict(zip(R11, ["m_ANB", "m_NperpA", "m_NperpPog", "m_MPFH", "m_TDI", "m_PHI", "m_NCWR", "m_NAV", "a_PAV_mm3", "a_PMCA", "a_PAL"]))
+E11 = {k: f"e11_{k}" for k in R11}; Q11 = {k: f"r11_{k}" for k in R11}                   # 엑셀 판 / 복원값 판
+ROH_SIG = {"ANB", "TDI", "PMCA"}                                                         # Roh 2025 Table 3에서 AHI·앙와위 AHI에 유의
+
 
 def data():
     d = A.data()
     for k in ROH: d[BCOL[k]] = d[MCOL[k]].fillna(d[XCOL[k]])
     d.attrs["filled"] = {k: int(d[MCOL[k]].isna().sum()) for k in ROH}
+    d["a_PAV_mm3"] = d.a_PAV*1000                                                          # 엑셀 PAV 단위(mm³)에 맞춤
+    for k in R11: d[E11[k]] = d[X11[k]].fillna(d[M11[k]]); d[Q11[k]] = d[M11[k]].fillna(d[X11[k]])
+    d.attrs["filled11"] = {"엑셀": {k: int((d[X11[k]].isna() & d[M11[k]].notna()).sum()) for k in R11}, "복원값": {k: int((d[M11[k]].isna() & d[X11[k]].notna()).sum()) for k in R11},
+                           "둘 다 없음": {k: int((d[X11[k]].isna() & d[M11[k]].isna()).sum()) for k in R11}}
     assert d[[BCOL[k] for k in ROH]+[XCOL[k] for k in ROH]+B0].notna().all().all() and len(d) == 83
     return d
 
@@ -92,9 +103,10 @@ def model_json(f, terms, n):
 
 def step1(d):
     out = {}
-    for ver, cols in (("엑셀", [XCOL[k] for k in ROH]), ("복원값", [BCOL[k] for k in ROH])):
+    u = d.dropna(subset=B0+list(E11.values())+list(Q11.values()))                        # 두 판을 같은 환자로
+    for ver, cols in (("엑셀", list(E11.values())), ("복원값", list(Q11.values()))):
         for y in YS:
-            f, terms = fit(d, y, B0+cols); out[(ver, y)] = {"n": len(d), "r2": f.rsquared, "ar2": f.rsquared_adj, "terms": terms}
+            f, terms = fit(u, y, B0+cols); out[(ver, y)] = {"n": len(u), "r2": f.rsquared, "ar2": f.rsquared_adj, "terms": terms}
     return out
 
 
@@ -151,27 +163,34 @@ def describe(v, cat):
 
 
 def step1_html(S1, cat, figs, filled):
-    divs = []
+    F = filled; divs = []
     for i, y in enumerate(YS):
         for ver in ("엑셀", "복원값"):
             m = S1[(ver, y)]; body = []
             for t, r in m["terms"].items():
-                key = next((MCOL[k] for k in ROH if BCOL[k] == t), t)
+                k11 = next((k for k in R11 if t in (E11[k], Q11[k])), None)
+                key = (X11[k11] if ver == "엑셀" else M11[k11]) if k11 else t
+                key = "a_PAV" if key == "a_PAV_mm3" else key
                 de, so = cat.get(key, ("", "")) if t != "const" else ("절편", "")
-                k5 = next((k for k in ROH if BCOL[k] == t), None)
-                fill = f"<br><span class='note'>결측 {filled[k5]}명은 엑셀 값으로 채움</span>" if k5 and filled[k5] else ""
+                nfill = F[ver][k11] if k11 else 0
+                fill = (f"<br><span class='note'>결측 {nfill}명은 {'복원값' if ver == '엑셀' else '엑셀 값'}으로 채움</span>" if nfill else "")
                 sig = " class=sig" if r["p"] < .05 and t != "const" else ""
-                body.append(f'<tr><td><code>{escape(TERM.get(t, t))}</code>{fill}</td><td>{escape(de)}</td><td>{escape(so)}</td><td>{thumb(key, figs)}</td><td>{m["n"]}</td>'
+                rc = ' class="rohsig"' if k11 in ROH_SIG else ""
+                body.append(f'<tr{rc}><td><code>{escape(k11 + (" (엑셀)" if ver == "엑셀" else " (복원값)") if k11 else TERM.get(t, t))}</code>{fill}</td><td>{escape(de)}</td><td>{escape(so)}</td><td>{thumb(key, figs)}</td><td>{m["n"]}</td>'
                             f'<td>{r["B"]:+.3g}</td><td>{nf(r["beta"])}</td><td{sig}>{pf(r["p"])}</td><td>{nf(r["vif"], ".2f")}</td><td>{m["r2"]:.3f}</td><td>{m["ar2"]:.3f}</td></tr>')
             divs.append(f'<div class="yt" data-s="1" data-k="{i}|{ver}"{"" if (i == 0 and ver == "엑셀") else " hidden"}><div class="tw"><table><thead><tr><th>항</th><th>변수 뜻</th><th>만든 과정</th><th>CT 위치</th>'
                         f'<th>n</th><th>B</th><th>β</th><th>p</th><th>VIF</th><th>모델 R²</th><th>수정 R²</th></tr></thead><tbody>{"".join(body)}</tbody></table></div></div>')
     opts = "".join(f'<option value="{i}">{escape(YL[y])}</option>' for i, y in enumerate(YS))
-    fl = ", ".join(f"{k} {v}명" for k, v in filled.items() if v)
-    return (f'<h2 id="s1">Step 1. Roh 2025 다중회귀 재현 (엑셀 값 대 복원값)</h2>'
-            f'<p><b>설정:</b> Roh 2025 Table 3과 같은 동시 모델. 83명 전원. 엑셀 값은 결측이 없고, 복원값(CBCT 자동 계측)의 결측({fl})은 엑셀 값으로 채웠다.</p>'
-            f'<div class="ctl"><label>결과 변수(Y) <select id="y1" onchange="showY(\'1\')">{opts}</select></label> <label>값 <select id="v1" onchange="showY(\'1\')"><option value="엑셀">엑셀 값 (연구실 수작업)</option><option value="복원값">복원값 (CBCT 자동 계측, 결측은 엑셀)</option></select></label></div>'
-            f'<p class="eq">회귀식(하나): Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + PMCA + PAL</p>'
-            f'<p class="note">Roh 2025 Table 3 (102명, AHI 원값): ANB β 0.32 (p=.005), MP-FH 0.05 (p=.680), TDI −0.27 (p=.002), PMCA −0.21 (p=.039), PAL −0.03 (p=.727), VIF 1.19~2.01, 수정 R² 0.40.</p>'
+    fe = ", ".join(f"{k} {v}명" for k, v in F["엑셀"].items() if v); fr = ", ".join(f"{k} {v}명" for k, v in F["복원값"].items() if v)
+    fb = ", ".join(f"{k} {v}명" for k, v in F["둘 다 없음"].items() if v); n = S1[("엑셀", YS[0])]["n"]
+    return (f'<h2 id="s1">Step 1. Roh 2025 CBCT 지표 11개 다중회귀 (엑셀 값 대 복원값)</h2>'
+            f'<p><b>설정:</b> Roh 2025 Table 1의 CBCT 지표 11개(골격 7개, 기도 4개)를 성별·나이·BMI와 함께 한 모델에 넣었다. '
+            f'엑셀 판은 엑셀 결측({fe})을 복원값으로, 복원값 판은 복원값 결측({fr})을 엑셀 값으로 채웠다. 두 값이 모두 없는 환자({fb})를 빼 두 판 모두 같은 {n}명이다. PAV는 엑셀 단위(mm³)로 맞췄다.</p>'
+            f'<p class="legend"><span class="rohsig">Roh 2025 Table 3에서 AHI·앙와위 AHI에 유의했던 지표 (ANB, TDI, PMCA)</span></p>'
+            f'<div class="ctl"><label>결과 변수(Y) <select id="y1" onchange="showY(\'1\')">{opts}</select></label> <label>값 <select id="v1" onchange="showY(\'1\')"><option value="엑셀">엑셀 값 (연구실 수작업, 결측은 복원값)</option><option value="복원값">복원값 (CBCT 자동 계측, 결측은 엑셀)</option></select></label></div>'
+            f'<p class="eq">회귀식(하나): Y ~ 성별 + 나이 + BMI + ANB + Nperp-A + Nperp-Pog + MP-FH + TDI + PHI + NCWR + NAV + PAV + PMCA + PAL</p>'
+            f'<p class="note">Roh 2025 Table 3은 이 중 5개(ANB, MP-FH, TDI, PMCA, PAL)만 넣은 모델이다(102명, AHI 원값): ANB β 0.32 (p=.005), MP-FH 0.05 (p=.680), TDI −0.27 (p=.002), PMCA −0.21 (p=.039), PAL −0.03 (p=.727), 수정 R² 0.40. '
+            f'11개를 함께 넣으면 같은 정보를 재는 지표(ANB와 Nperp-Pog, PAV와 PMCA·PAL 등)가 서로의 계수를 나눠 가지므로 VIF를 함께 볼 것.</p>'
             + "".join(divs))
 
 
@@ -322,6 +341,8 @@ def step2_html(S2, d, cat, figs, heat, pcs):
 
 # ------------------------------------------------------------ Step 3: 대표값 대체 (사용자 결정 2026-11-17, Step 2 방식)
 from scipy.cluster.hierarchy import fcluster
+SUBS3 = {"MP-FH": "SN_MP"}                                                          # 사용자 결정 2026-11-17
+REP3 = {"Pog_Ba_ant", "Go_Me", "VERT_Z"}                                              # 묶음 대표값 지정(나머지 묶음은 중심 변수)
 BASE2 = B0+[BCOL["ANB"], BCOL["MP-FH"], BCOL["TDI"], "AWshape_PC1", "H_col"]             # Step 2 모델
 
 
@@ -332,26 +353,24 @@ def step3(d):
     lab = dict(zip(names, fcluster(Z, t=0.3, criterion="distance")))                     # 묶음: 평균 |r| ≳ 0.7
     groups = {}
     for v, c in lab.items(): groups.setdefault(c, []).append(v)
-    subs = {}
-    for k in ("ANB", "MP-FH", "TDI"):                                                     # Step 1 인자와 가장 많이 겹치는 같은 차원 변수
-        cand = [v for v in names if STEP3.get(v) and STEP3[v][0] == k]
-        if cand: subs[k] = max(cand, key=lambda v: abs(r.at[v, BCOL[k]]))
+    subs = dict(SUBS3)                                                                    # Step 1 인자와 확실히 겹치는 것만 대체(사용자 결정)
+    best = {k: max([v for v in names if STEP3.get(v) and STEP3[v][0] == k], key=lambda v: abs(r.at[v, BCOL[k]])) for k in ("ANB", "MP-FH", "TDI")}
     rep, role = {}, {}
     for c, mem in groups.items():
-        sv = [v for v in mem if v in subs.values()]
+        sv = [v for v in mem if v in subs.values()] or [v for v in mem if v in REP3]
         rp = sv[0] if sv else max(mem, key=lambda v: r.loc[v, mem].abs().mean())
         for v in mem: rep[v] = rp
     for v in names:
         k = next((k for k, x in subs.items() if x == v), None)
         if k: role[v] = (k, f"대표값: {k} 자리에 넣음 (r = {r.at[v, BCOL[k]]:+.2f})")
         elif rep[v] != v: role[v] = (STEP3[v][0] if STEP3.get(v) else "", f"{DISP.get(rep[v], rep[v])}로 대표 (r = {r.at[v, rep[v]]:+.2f}, 제외)")
-        elif len(groups[lab[v]]) > 1: role[v] = (STEP3[v][0] if STEP3.get(v) else "", "묶음 대표값: Step 3 모델 위에 추가")
-        else: role[v] = (STEP3[v][0] if STEP3.get(v) else "", "Step 3 모델 위에 추가")
+        elif len(groups[lab[v]]) > 1: role[v] = ("", "묶음 대표 실험: Step 3 모델 위에 추가")
+        else: role[v] = ("", "단독 실험: Step 3 모델 위에 추가")
     swap = lambda cols, a, b: [b if c == a else c for c in cols]
     base3 = BASE2
     for k, v in subs.items(): base3 = swap(base3, BCOL[k], v)
     u = d.dropna(subset=BASE2+list(subs.values()))
-    specs = [("Step 2 모델", BASE2)]+[(f"{k} → {DISP.get(v, v)}", swap(BASE2, BCOL[k], v)) for k, v in subs.items()]+[("Step 3 모델 (모두 대체)", base3)]
+    specs = [("Step 2 모델", BASE2), ("Step 3 모델 (" + ", ".join(f"{k} → {DISP.get(v, v)}" for k, v in subs.items()) + ")", base3)]
     models = {y: [(nm, model_json(*fit(u, y, cols), len(u)), cols) for nm, cols in specs] for y in YS}
     adds = [v for v in names if rep[v] == v and v not in subs.values()]; rows, eq = [], {}
     for x in adds:
@@ -364,7 +383,7 @@ def step3(d):
     t = pd.DataFrame(rows)
     for y in YS:
         k = t.index[t.y == y]; t.loc[k, "add_q"] = multipletests(t.loc[k, "add_p"], method="fdr_bh")[1]
-    return {"subs": subs, "base3": base3, "n": len(u), "models": models, "t": t, "eq": eq, "role": role, "r": r, "names": names, "groups": groups, "lab": lab}
+    return {"best": {k: (v, float(r.at[v, BCOL[k]])) for k, v in best.items()}, "subs": subs, "base3": base3, "n": len(u), "models": models, "t": t, "eq": eq, "role": role, "r": r, "names": names, "groups": groups, "lab": lab, "rep": rep}
 
 
 def eqstr(cols):
@@ -379,13 +398,23 @@ def step3_html(S3, d, cat, figs, heat, pcs, intro):
     p2 = f'<h3>3-2. 주성분·요인 축 적재량</h3><div class="pcgrid">{cards}</div>' if pcs else ""
     p3 = (f'<h3>3-3. 변수 간 상관 히트맵</h3><p class="note">83명 Spearman 상관. 왼쪽 5열은 Step 1 인자(복원값), 오른쪽은 신규 인자끼리. 글자 색 = 변수 출처. 누르면 크게 열린다.</p>'
           f'<a href="figs/{heat.name}" target="_blank"><img class="heat" src="figs/{heat.name}" alt="상관 히트맵"></a>')
-    order = sorted(names, key=lambda v: (S3["lab"][v], v != S3["role"] and 0))
-    d4 = "".join(f'<tr{kc("3", v)}><td><code>{escape(DISP.get(v, v))}</code></td><td>{S3["lab"][v]}</td><td>{S3["role"][v][0]}</td><td>{escape(S3["role"][v][1])}</td>'
-                 + "".join(f'<td class="{"hi" if abs(r.at[v, BCOL[k]]) >= .5 else ""}">{nf(r.at[v, BCOL[k]])}</td>' for k in ("ANB", "MP-FH", "TDI")) + "</tr>" for v in order)
+    rep = S3["rep"]; used = [v for v in names if rep[v] == v]
+    def rtxt(v):
+        k = next((k for k, x in S3["subs"].items() if x == v), None)
+        if k: return f'{k} {r.at[v, BCOL[k]]:+.2f}'
+        k = max(("ANB", "MP-FH", "TDI"), key=lambda k: abs(r.at[v, BCOL[k]])); return f'{k} {r.at[v, BCOL[k]]:+.2f}'
+    def proc(v):
+        k = next((k for k, x in S3["subs"].items() if x == v), None)
+        return f"<b>{k} 자리에 대체</b>" if k else ("추가 (묶음 대표)" if any(rep[m] == v and m != v for m in names) else "추가 (단독)")
+    order = sorted(used, key=lambda v: (0 if v in S3["subs"].values() else 1 if any(rep[m] == v and m != v for m in names) else 2, KIND3.get(v, ""), v))
+    d4 = "".join(f'<tr{kc("3", v)}><td><code>{escape(DISP.get(v, v))}</code></td><td>{next((k for k, x in S3["subs"].items() if x == v), "")}</td><td>{proc(v)}</td><td>{rtxt(v)}</td>'
+                 f'<td>{", ".join(f"{escape(DISP.get(m, m))} ({r.at[m, v]:+.2f})" for m in names if rep[m] == v and m != v)}</td></tr>' for v in order)
     sb = ", ".join(f"{k} → {DISP.get(v, v)}" for k, v in S3["subs"].items())
-    p4 = (f'<h3>3-4. 변수 간 대체 관계</h3><p class="note">히트맵에서 서로 상관이 높은(평균 |r| ≳ 0.7) 변수를 같은 묶음 번호로 묶었다. Step 1 인자마다, 같은 차원으로 짝지은 변수 중 그 인자와 가장 많이 겹치는(|r| 최대) 변수 하나를 대표 대체값으로 썼다: <b>{escape(sb)}</b>. '
-          f'대체값과 같은 묶음의 나머지는 대체값으로 대표하고, 다른 묶음은 묶음 대표값 하나만 Step 3 모델 위에 추가한다. |r| ≥ 0.5는 색으로 표시.</p>'
-          f'<div class="yt"><div class="tw"><table><thead><tr><th>변수</th><th>묶음</th><th>대체 짝</th><th>처리</th><th>r (ANB)</th><th>r (MP-FH)</th><th>r (TDI)</th></tr></thead><tbody>{d4}</tbody></table></div></div>')
+    bt = "".join(f'<tr><td>{k}</td><td><code>{escape(DISP.get(v, v))}</code></td><td>{rv:+.2f}</td><td>{"<b>대체</b>" if k in S3["subs"] else "매칭 없음 (Step 1 인자 유지)"}</td></tr>' for k, (v, rv) in S3["best"].items())
+    p4 = (f'<h3>3-4. 변수 간 대체 관계와 묶음</h3><p class="note">Step 1 골격 인자와 확실히 겹치는 Step 3 변수만 대체했다(MP-FH ↔ SN_MP, r = +0.88). ANB·TDI와 가장 많이 겹치는 변수도 |r|이 낮아 매칭 없음으로 두었다.</p>'
+          f'<div class="yt"><div class="tw"><table><thead><tr><th>Step 1 인자</th><th>가장 많이 겹치는 Step 3 변수</th><th>r</th><th>처리</th></tr></thead><tbody>{bt}</tbody></table></div></div>'
+          f'<p class="note">Step 3 변수끼리 상관이 높은(평균 |r| ≳ 0.7) 것을 같은 묶음 번호로 묶고, 묶음마다 대표값 하나만 실험한다. 아래 표는 Step 3에서 실제로 모델에 넣는 변수만 담았다(대체 1개 + 추가 실험). 대표값이 묶음의 다른 변수를 대신하면 마지막 열에 적었다.</p>'
+          f'<div class="yt"><div class="tw"><table><thead><tr><th>추가할 변수명</th><th>대체 짝</th><th>처리</th><th>r (대체 짝, 없으면 가장 겹치는 Step 1 인자)</th><th>대표하는 변수들 (대표값과의 r)</th></tr></thead><tbody>{d4}</tbody></table></div></div>')
     foc = {nm: [c for c in cols if c not in BASE2] for nm, _, cols in S3["models"][YS[0]]}
     divs = []
     for i, y in enumerate(YS):
@@ -398,7 +427,7 @@ def step3_html(S3, d, cat, figs, heat, pcs, intro):
         divs.append(f'<div class="yt" data-s="3r" data-k="{i}|"{"" if i == 0 else " hidden"}><div class="eqrow">{"".join(cells)}</div></div>')
     opts = "".join(f'<option value="{i}">{escape(YL[y])}</option>' for i, y in enumerate(YS))
     p5 = (f'<h3>3-5. 대체 회귀식 (회귀식 단위)</h3><div class="ctl"><label>결과 변수(Y) <select id="y3r" onchange="showY(\'3r\')">{opts}</select></label>'
-          f'<span class="note">Step 2 모델에서 출발해 Step 1 골격 인자를 하나씩, 그리고 모두 대체. 같은 환자 {S3["n"]}명. 대체한 항은 노란색.</span></div>' + "".join(divs))
+          f'<span class="note">Step 2 모델과, MP-FH를 SN_MP로 바꾼 Step 3 모델. 같은 환자 {S3["n"]}명. 대체한 항은 노란색.</span></div>' + "".join(divs))
     t = S3["t"]; divs = []
     for i, y in enumerate(YS):
         body = "".join(f'<tr class="pick {KIND3.get(r_["var"], "")}" data-x="{escape(r_["var"])}" onclick="showEq(\'3\', this.dataset.x)"><td><code>{escape(DISP.get(r_["var"], r_["var"]))}</code></td><td>{r_["n"]}</td><td>{r_["r2_base"]:.3f}</td>'
@@ -406,8 +435,8 @@ def step3_html(S3, d, cat, figs, heat, pcs, intro):
                        for _, r_ in t[t.y == y].iterrows())
         divs.append(f'<div class="yt" data-s="3" data-k="{i}|"{"" if i == 0 else " hidden"}><div class="tw"><table><thead><tr><th>변수명</th><th>n</th><th>Step 3 모델 R²</th>'
                     f'<th class="g3">β</th><th class="g3">p</th><th class="g3">FDR q</th><th class="g3">ΔR²</th><th class="g3">VIF</th></tr></thead><tbody>{body}</tbody></table></div></div>')
-    p6 = (f'<h3>3-6. Step 3 모델 위 추가 변수</h3><div class="ctl"><label>결과 변수(Y) <select id="y3" onchange="showY(\'3\')">{opts}</select></label>'
-          f'<span class="note">묶음 대표값과 단독 변수. 행을 누르면 아래에 회귀식 표(Step 3 모델 · 추가 모델)가 열린다.</span></div>'
+    p6 = (f'<h3>3-6. Step 3 모델 위 추가 실험</h3><div class="ctl"><label>결과 변수(Y) <select id="y3" onchange="showY(\'3\')">{opts}</select></label>'
+          f'<span class="note">묶음 대표값 {sum(1 for v in S3["role"].values() if "묶음 대표" in v[1])}개 + 단독 변수 {sum(1 for v in S3["role"].values() if "단독" in v[1])}개. 행을 누르면 아래에 회귀식 표(Step 3 모델 · 추가 모델)가 열린다.</span></div>'
           f'<p class="eq">추가: {escape(eqstr(S3["base3"]))} + X</p>' + "".join(divs) + '<div class="eqbox" id="eq3"><p class="note">요약표의 행을 누르면 회귀식 표가 여기에 열립니다.</p></div>')
     return f'<h2 id="s3">Step 3. 3D 골격 신규 인자</h2><p>{intro}</p>{p1}{p2}{p3}{p4}{p5}{p6}'
 
@@ -422,16 +451,16 @@ def main():
         else: t, eq = newfactor(d, c, s)
         T.append(t); EQ[s] = eq
     T = pd.concat(T); T.round(5).to_csv(OUT/"step1_4.csv", index=False, encoding="utf-8-sig")
-    names = list(dict.fromkeys(list(MCOL.values())+list(XCOL.values())+list(STEP2)+list(STEP3)+list(T["var"]))); ex, figs = VF.build(d, names)
-    s1 = pd.DataFrame([{"ver": v, "y": y, "term": t, **r, "n": m["n"], "R2": m["r2"], "adjR2": m["ar2"]} for (v, y), m in S1.items() for t, r in m["terms"].items()])
+    names = list(dict.fromkeys(list(MCOL.values())+list(XCOL.values())+list(X11.values())+[v for v in M11.values() if v != 'a_PAV_mm3']+list(STEP2)+list(STEP3)+list(T["var"]))); ex, figs = VF.build(d, names)
+    s1 = pd.DataFrame([{"ver": v, "y": y, "term": t, **r, "n": m["n"], "R2": m["r2"], "adjR2": m["ar2"]} for (v, y), m in S1.items() for t, r in m["terms"].items()])  # 11개 판
     s1.round(5).to_csv(OUT/"step1_roh.csv", index=False, encoding="utf-8-sig")
     intro = {"2": "기도 신규 인자. 단면 관련 지표는 PMCA, 길이·높이 지표는 PAL과 같은 차원으로 보았다. 연구개·비강·위치·모양 지표는 Step 1에 같은 차원이 없다.",
-             "3": "3D 골격 신규 인자. 앞뒤 관계 → ANB, 수직 패턴 → MP-FH, 횡방향 폭 → TDI와 같은 차원으로 보았다. Step 2 모델에서 출발해, Step 1 골격 인자를 같은 차원의 대표값으로 대체한 Step 3 모델을 만들고, 나머지 묶음 대표값·단독 변수가 그 위에 더하는지 본다.",
+             "3": "3D 골격 신규 인자. Step 2 모델에서 출발해, Step 1 골격 인자와 확실히 겹치는 MP-FH만 SN_MP로 대체한 Step 3 모델을 만들고, Step 3 변수끼리 묶은 묶음의 대표값과 단독 변수가 그 위에 더하는지 본다.",
              "4": "연조직·연동·형상 탐색 인자(혀, 저작근, 부비동, 설골, 구강 공간, 요인 점수, 지렛대, 잔여 형상, 공동 축, 부위별 크기·위치). Step 1에 같은 차원이 없어 추가 모델로 판단한다."}
     titles = {"2": "Step 2. 기도 신규 인자", "3": "Step 3. 3D 골격 신규 인자", "4": "Step 4. 연조직·연동·형상 탐색"}
     import osa_pc_figs as PCF
     PCS = PCF.build({"2": list(STEP2), "3": list(STEP3), "4": list(T[T.step == "4"]["var"].unique())})
-    secs = [step1_html(S1, cat, figs, filled)]
+    secs = [step1_html(S1, cat, figs, d.attrs["filled11"])]
     for s in ("2", "3", "4"):
         t = T[T.step == s]
         if s == "3": intro[s] += " 표의 행 색과 히트맵 글자 색으로 변수 출처를 구분했다(맨 위 범례)."
@@ -447,7 +476,7 @@ def main():
 th.g2{{background:#eefaf0}}th.g3{{background:#fff4ec}}td code{{font-size:.8rem}}img.thumb{{width:120px;margin:0;border-radius:4px}}img.heat{{width:100%;max-width:1400px}}
 tr.pick{{cursor:pointer}}tr.pick:hover td{{background:#f3f6fa}}tr.pick.on td{{background:#e3edff}}tr.focus td{{background:#fff3cd}}table.reg tfoot td{{color:var(--muted);font-size:.85rem}}
 .eqbox{{border:1px solid #b8c2cc;border-radius:6px;padding:8px 12px;margin:10px 0}}.eqrow{{display:flex;gap:16px;flex-wrap:wrap}}.eqc{{flex:1 1 300px}}
-tr.c1 td{{background:#e6efff}}tr.c1 td:first-child{{border-left:4px solid #2563eb}}.legend .c1{{background:#e6efff;border-left:4px solid #2563eb;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c2 td{{background:#f1e9ff}}tr.c2 td:first-child{{border-left:4px solid #7c3aed}}.legend .c2{{background:#f1e9ff;border-left:4px solid #7c3aed;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c3 td{{background:#e3f7ee}}tr.c3 td:first-child{{border-left:4px solid #059669}}.legend .c3{{background:#e3f7ee;border-left:4px solid #059669;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c4 td{{background:#fff1dc}}tr.c4 td:first-child{{border-left:4px solid #d97706}}.legend .c4{{background:#fff1dc;border-left:4px solid #d97706;padding:2px 8px;margin-right:8px;display:inline-block}}.pcgrid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}}.pcf{{margin:0;border:1px solid #b8c2cc;border-radius:6px;padding:6px}}.pcf img{{width:100%}}.pcf figcaption{{font-size:.82rem}}
+tr.c1 td{{background:#e6efff}}tr.c1 td:first-child{{border-left:4px solid #2563eb}}.legend .c1{{background:#e6efff;border-left:4px solid #2563eb;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c2 td{{background:#f1e9ff}}tr.c2 td:first-child{{border-left:4px solid #7c3aed}}.legend .c2{{background:#f1e9ff;border-left:4px solid #7c3aed;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c3 td{{background:#e3f7ee}}tr.c3 td:first-child{{border-left:4px solid #059669}}.legend .c3{{background:#e3f7ee;border-left:4px solid #059669;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c4 td{{background:#fff1dc}}tr.c4 td:first-child{{border-left:4px solid #d97706}}.legend .c4{{background:#fff1dc;border-left:4px solid #d97706;padding:2px 8px;margin-right:8px;display:inline-block}}tr.rohsig td{{background:#fff3c4}}tr.rohsig td:first-child{{border-left:4px solid #e0a100}}.legend .rohsig{{background:#fff3c4;border-left:4px solid #e0a100;padding:2px 8px;display:inline-block}}.pcgrid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}}.pcf{{margin:0;border:1px solid #b8c2cc;border-radius:6px;padding:6px}}.pcf img{{width:100%}}.pcf figcaption{{font-size:.82rem}}
 .ctl{{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:8px 0}}.ctl select{{font-size:.95rem;padding:3px 6px;max-width:100%}}.eq{{font-family:monospace;font-size:.85rem;margin:6px 0}}</style></head><body><main>
 <h1>83명 단계별 회귀 결과</h1><p class="sub">2026-11-17 · 분할 없음 (계수 유의성 판단용) · 대상 83명 (19세 미만 2명, CBCT 없음 2명 제외, Class III 3명 포함)</p>
 <nav><a href="#s1">Step 1</a><a href="#s2">Step 2</a><a href="#s3">Step 3</a><a href="#s4">Step 4</a></nav>
@@ -462,6 +491,12 @@ tr.c1 td{{background:#e6efff}}tr.c1 td:first-child{{border-left:4px solid #2563e
 <script>const YS={json.dumps(YS)};const YL={json.dumps(YL, ensure_ascii=False)};const TERM={json.dumps(term, ensure_ascii=False)};const PAIR={json.dumps(pair, ensure_ascii=False)};const BASE={json.dumps({"2": ["Step 2 모델 (같은 환자)", "Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + AWshape_PC1 + H_col"], "3": ["Step 3 모델 (같은 환자)", eqstr(S3["base3"])]}, ensure_ascii=False)};
 const EQ={json.dumps(EQ, ensure_ascii=False, separators=(",", ":"))};
 {JS}</script></main></body></html>"""
+    # Step 1~3만 자른 판: 읽는 법 상자·Step 4 제외
+    a, b = html.index('<div class="box"><b>읽는 법</b>'), html.index("</ul></div>", html.index('<div class="box"><b>읽는 법</b>'))+len("</ul></div>")
+    h3 = html[:a]+html[b:]
+    h3 = h3[:h3.index('<h2 id="s4">')]+h3[h3.index("<script>const YS="):]
+    h3 = h3.replace('<a href="#s4">Step 4</a>', "").replace("<title>83명 단계별 회귀</title>", "<title>Step 1~3 회귀 결과</title>").replace("<h1>83명 단계별 회귀 결과</h1>", "<h1>CBCT 골격·기도 인자와 OSA 중증도: Step 1~3 회귀 결과</h1>")
+    check(h3, "Step 1~3 보고서"); f3 = OUT/"Step1-3_회귀_보고서.html"; f3.write_text(apply(h3), encoding="utf-8"); print("saved", f3)
     check(html, "83명 단계별 회귀"); f = OUT/"전체_83명_단계별_회귀.html"; f.write_text(apply(html), encoding="utf-8"); print("saved", f, round(len(html)/1e6, 1), "MB | 채움", filled)
     miss = [v for v in T["var"].unique() if detail(v) is None and v not in cat]; print("설명 없음:", miss)
 

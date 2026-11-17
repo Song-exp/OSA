@@ -45,7 +45,7 @@ def size_axis():
     t = pd.read_csv(R/"analysis/validation/size_loadings.csv", encoding="utf-8-sig")
     M = pd.DataFrame({"PC1 (69%)": t.loading.to_numpy(), "SIZE_PC1과 상관": t.rho_with_SIZE.to_numpy()}, index=[f"{f} ({b})" for f, b in zip(t.feature, t["부위"])])
     return [("구조 크기 축 적재량", heat(M, "구조 크기 축(SIZE_PC1): 행 = 12부위 크기, 열 = 적재량·축 점수와의 상관", "SIZE_PC1", 1),
-             "12부위 적재량이 모두 양수(0.16~0.32)라 모든 부위가 함께 커지는 '전체 크기' 축이다.")]
+             "12부위 적재량이 모두 양수(0.16~0.32)라 모든 부위가 함께 커지는 '전체 크기' 축이다. 부위 크기 12개로 만든 PCA라 위치·배치 정보는 없다(공동 축 F1은 표면 좌표 전체로 만든 PCA).")]
 
 
 def pls():
@@ -88,7 +88,8 @@ def joint(names):
         K = max(ks); _, vt, var, sd = JA.pca(Y, K); M = region_table(vt, sd, lab, st_of, K); M.columns = [f"{c} ({v:.0%})" for c, v in zip(M.columns, var)]
         unit = "mm" if mode == "form" else "크기 제거 단위"
         out.append((f"공동 축 {name} 적재량 (부위 × 방향)", heat(M, f"{name} 공동 축: 행 = 부위 × 방향, 열 = PC (분산 비율), 칸 = 축 +1 SD당 평균 이동({unit})", f"{name}_load"),
-                    "앞뒤·위아래는 +면 앞·위로 이동, 좌우는 이동 크기(절댓값). 큰 칸이 그 축이 나타내는 배치 변화다."))
+                    "앞뒤·위아래는 +면 앞·위로 이동, 좌우는 이동 크기(절댓값). 큰 칸이 그 축이 나타내는 배치 변화다."
+                    + (" PC1: 하악이 상악·두개저에 비해 뒤·위로 놓임(하악 후퇴 배치). PC4: 하악이 상악보다 아래로 놓임(수직 배치)." if name == "F1" else "")))
     return out
 
 
