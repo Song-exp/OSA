@@ -5,7 +5,7 @@
   PMCA와 같은 기도 성분(cbct_pmca.airway)·중심선 수직 단면(cbct_pmca.sections)을 쓰고, Eb→PNS를 0→1로 정규화한 20구간 단면적.
   요약: 길이(높이), 부피, 최소 단면적과 그 위치, 평균 단면적. Eb 미계측 환자는 빈칸.
 비강 프로파일: TotalSegmentator 비강 라벨(cbct_nav.ts_nasal), PNS→ANS를 0→1로 정규화한 20구간의 관상 단면적 + 부피·최소 단면.
-상대관계: 설골(cbct_eb_detect.hyoid)·Eb·Me·Pog·Go(좌우 평균)의 정중 좌표(앞·위), 설골–하악평면(Go–Me) 거리(MP-H), 설골–Me 거리.
+상대관계: 설골점 H(cbct_eb_detect.hyoid, 몸통의 가장 앞쪽·위쪽 점)·Eb·Me·Pog·Go(좌우 평균)의 정중 좌표(앞·위), 설골–하악평면(Go–Me) 거리(MP-H), 설골–Me 거리.
 Eb는 cbct_restore_extend.eb_row(동결된 설골 보정량)로 85명 모두 같은 규칙으로 다시 구한다.
 출력: Result_py/shape/extra/{airway_profile,nasal_profile,relation}.csv
 사용: python shape_extra_vectors.py [환자번호...]
@@ -47,7 +47,7 @@ def airway(pid, e, v, dirs, org, o, R, s):
     m = pm.airway(vol, Ls, ant, sup, s[1], s[2]); del vol
     if m is None: return r
     ax, perp, _ = pm.sections(m, Ls, ant, sup)
-    lo = e.Eb_sup+pm.BOTTOM_CENTER; rng = (sup >= lo) & (sup <= 0)    # PMCA와 같이 아래 경계 5 mm는 잘림을 피해 뺀다
+    lo = e.Eb_sup+pm.BOTTOM_CENTER; rng = (sup >= lo) & (sup <= 0)    # PMCA와 같이 아래 경계 여유(BOTTOM_CENTER)는 잘림을 피해 뺀다
     p = profile(sup, perp, lo, 0.0)
     r |= {f"AW_p{i:02d}": x for i, x in enumerate(p)}
     pr = np.where(perp[rng] > 0, perp[rng], np.nan)
@@ -70,8 +70,8 @@ def relation(e, P, o, R):
     q = {k: R@(P[k]-o) for k in ("Me", "Pog", "RGo", "LGo", "N", "S", "Ba", "ANS")}; go = (q["RGo"]+q["LGo"])/2
     r = {f"{k}_{ax}": q[k][i] for k in ("Me", "Pog", "N", "S", "Ba") for ax, i in (("ant", 1), ("sup", 2))}
     r |= {"Go_ant": go[1], "Go_sup": go[2], "Eb_ant": e.Eb_ant, "Eb_sup": e.Eb_sup}
-    if "hy_ant" in e and np.isfinite(e.get("hy_ant", np.nan)):
-        h = np.array([e.hy_ant, e.hy_sup]); a, b = go[1:], q["Me"][1:]; d = b-a
+    if "H_ant" in e and np.isfinite(e.get("H_ant", np.nan)):    # 설골점 = H(몸통의 가장 앞쪽·위쪽 점, 문헌 정의)
+        h = np.array([e.H_ant, e.H_sup]); a, b = go[1:], q["Me"][1:]; d = b-a
         r |= {"Hy_ant": h[0], "Hy_sup": h[1], "MP_H": float(abs(d[0]*(h[1]-a[1])-d[1]*(h[0]-a[0]))/np.linalg.norm(d)),   # 설골 → Go–Me 직선 거리
               "Hy_Me": float(np.linalg.norm(h-b))}
     return r

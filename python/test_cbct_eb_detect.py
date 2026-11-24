@@ -19,8 +19,10 @@ class EbDetect(unittest.TestCase):
         air[(ant > -25) & (ant < -18), :] = True                    # 인두
         air[np.ix_((ant > -15) & (ant < -10), (sup > -48) & (sup < -30))] = True   # 후두개곡
         air[np.ix_((ant > -25) & (ant < -10), (sup > -32) & (sup < -30))] = True   # 후두개 끝 위에서 연결
-        c, z, n = eb.vallecula(air, ant, sup, (20.0, -5.0, -50.0))
+        c, z, n = eb.vallecula(air, ant, sup, (20.0, -5.0, -50.0, -5.0, -50.0, -53.0))    # 몸통 아래 끝 −53
         self.assertAlmostEqual(z, -48, delta=eb.STEP*1.5); self.assertLess(abs(c+12.5), 1.0); self.assertGreater(n, 3)
+        _, z2, _ = eb.vallecula(air, ant, sup, (20.0, -5.0, -50.0, -5.0, -50.0, -45.0))  # 몸통 아래 끝이 후두개곡 바닥보다 위면 거기서 자름
+        self.assertAlmostEqual(z2, -45, delta=eb.STEP*1.5)
 
     def test_hyoid_touching_window_edge_is_rejected(self):
         ant, sup = np.arange(*eb.ANT, eb.STEP), np.arange(*eb.SUP, eb.STEP)

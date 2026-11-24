@@ -1,6 +1,6 @@
 """83명 Step 1~4 (분할 없음, 계수 유의성 판단용).
-Step 1: Roh 2025 Table 3 동시 모델 Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + PMCA + PAL. 엑셀 판 / 복원값 판(복원값 결측은 엑셀로 채움), 83명.
-Step 2~4 (같은 템플릿): 1. 변수 설명 2. 상관 히트맵(Step 1 인자 + 신규 인자끼리) 3. 대체 관계(도메인 짝) 4. X 전체 요약표(대체·추가) + 행을 누르면 회귀식 단위 표.
+Step 1: Roh CBCT 지표 11개 동시 모델(재현 분석). 신규 인자 분석의 출발점은 기준 5개 모델(ANB·MP-FH·TDI·PMCA·PAL, 복원값 결측은 엑셀로 채움).
+Step 2~4 (같은 템플릿): 1. 변수 설명 2. 상관 히트맵(기준 5개 인자 + 신규 인자끼리) 3. 대체 관계(도메인 짝) 4. X 전체 요약표(대체·추가) + 행을 누르면 회귀식 단위 표.
 기준 모델은 복원값 판. 비교는 X가 있는 같은 환자에서.
 출력: Result_py/analysis/all83/전체_83명_단계별_회귀.html (+ step1_roh.csv, step1_4.csv, figs/heat_*.png)
 """
@@ -41,14 +41,14 @@ STEP3 = {**{k: SAG for k in ("Pog_Ba_ant", "SNB", "SNA", "Pog_PNS_ant", "PNS_B_a
          **{k: None for k in ("SIZE_PC1", "SIZE_MAND", "SIZE_MAX", "SIZE_CB", "S_N", "S_Ba", "NSBa", "ANS_PNS", "PNS_Ba_depth", "Co_A", "palate_cb", "mand_cb", "logCS_all", "AlloShape",
                               "Atyp_D2", "Atyp_Procrustes", "MaxPost_Clivus_ant")}}      # PLS_t1은 사용자 결정으로 제외(2026-11-17)
 
-# Step 3 변수 출처 구분 (색): ① 고전 두부계측 ② Roh 지표(Step 1 모델 밖) ③ 자체 3D 기준점 지표 ④ 형상 요약값
+# Step 3 변수 출처 구분 (색): ① 고전 두부계측 ② Roh 지표(기준 5개 모델 밖) ③ 자체 3D 기준점 지표 ④ 형상 요약값
 KIND3 = {**{k: "c1" for k in ("SNA", "SNB", "S_N", "S_Ba", "NSBa", "ANS_PNS", "N_Me", "ANS_Me", "S_Go", "Co_Gn", "Co_A", "Co_Go", "Go_Me", "gonial", "PP_MP", "SN_MP",
                                "Jarabak", "McN_diff", "Yaxis", "FacialAxis_proxy", "LAFH_ratio", "Overjet_mm", "overbite_mm", "upper_width_M1", "lower_width_M1",
                                "InterGonial", "Upper_Taper", "upper_depth", "ramus_body", "palate_cb", "mand_cb")},
          **{k: "c2" for k in ("m_NperpPog", "m_NperpA", "m_PHI", "m_NCWR")},
          **{k: "c3" for k in ("Pog_Ba_ant", "Pog_PNS_ant", "PNS_B_ant", "PNS_Ba_depth", "body_len", "body_len_res", "MaxPost_Clivus_ant")},
          **{k: "c4" for k in ("F1_PC1", "F1_PC4", "SIZE_PC1", "SIZE_MAND", "SIZE_MAX", "SIZE_CB", "logCS_all", "AlloShape", "Atyp_D2", "Atyp_Procrustes", "VERT_Z")}}
-KIND_LAB = {"c1": ("고전 두부계측 (선행연구 기준 계측값)", "#2563eb", "#e6efff"), "c2": ("Roh 지표 중 Step 1 모델 밖", "#7c3aed", "#f1e9ff"),
+KIND_LAB = {"c1": ("고전 두부계측 (선행연구 기준 계측값)", "#2563eb", "#e6efff"), "c2": ("Roh 지표 중 기준 5개 모델 밖", "#7c3aed", "#f1e9ff"),
             "c3": ("자체 3D 기준점 지표 (골격 위치 벡터 기반)", "#059669", "#e3f7ee"), "c4": ("형상 요약값 (AMASSS 대응점 PC·크기·PLS 등)", "#d97706", "#fff1dc")}
 
 
@@ -75,6 +75,8 @@ R11 = ["ANB", "Nperp-A", "Nperp-Pog", "MP-FH", "TDI", "PHI", "NCWR", "NAV", "PAV
 X11 = dict(zip(R11, ["x_ANB", "x_NperpA", "x_NperpPog", "x_MPFH", "x_TDI", "x_PHI", "x_NCWR", "x_NAV", "x_PAV", "x_PMCA", "x_PAL"]))
 M11 = dict(zip(R11, ["m_ANB", "m_NperpA", "m_NperpPog", "m_MPFH", "m_TDI", "m_PHI", "m_NCWR", "m_NAV", "a_PAV_mm3", "a_PMCA", "a_PAL"]))
 E11 = {k: f"e11_{k}" for k in R11}; Q11 = {k: f"r11_{k}" for k in R11}                   # 엑셀 판 / 복원값 판
+TERM.update({**{v: f"{k} (엑셀 우선)" for k, v in E11.items()},
+             **{v: f"{k} (복원값 우선)" for k, v in Q11.items()}})
 ROH_SIG = {"ANB", "TDI", "PMCA"}                                                         # Roh 2025 Table 3에서 AHI·앙와위 AHI에 유의
 
 
@@ -132,7 +134,7 @@ def newfactor(d, cands, sid):
 
 # ------------------------------------------------------------ 그림·HTML 조각
 def heatmap(d, names, sid):
-    lab = {**{BCOL[k]: f"[Step 1] {k}" for k in ROH}, **{n: DISP.get(n, n) for n in names}}
+    lab = {**{BCOL[k]: f"[기준 5개] {k}" for k in ROH}, **{n: DISP.get(n, n) for n in names}}
     r_new = d[names].corr("spearman").fillna(0)
     order = [names[i] for i in leaves_list(linkage(1-np.abs(r_new.to_numpy()[np.triu_indices(len(names), 1)]), "average"))] if len(names) > 2 else names
     cols = [BCOL[k] for k in ROH]+order; R = d[order+[BCOL[k] for k in ROH]].corr("spearman").loc[order, cols]
@@ -148,7 +150,7 @@ def heatmap(d, names, sid):
     if n <= 40:
         for i in range(n):
             for j in range(m): ax.text(j, i, f"{R.iat[i, j]:.1f}", ha="center", va="center", fontsize=4.5, color="white" if abs(R.iat[i, j]) > .6 else "black")
-    fig.colorbar(im, ax=ax, shrink=.5, label="Spearman r"); ax.set_title("왼쪽 5열: Step 1 인자(복원값) · 오른쪽: 신규 인자끼리 (비슷한 변수끼리 모이도록 정렬)", fontsize=8)
+    fig.colorbar(im, ax=ax, shrink=.5, label="Spearman r"); ax.set_title("왼쪽 5열: 기준 5개 인자(복원값) · 오른쪽: 신규 인자끼리 (비슷한 변수끼리 모이도록 정렬)", fontsize=8)
     fig.tight_layout(); f = FIG/f"heat_s{sid}.png"; fig.savefig(f, dpi=110); plt.close(fig); return f
 
 
@@ -203,13 +205,13 @@ def nf_html(sid, title, intro, t, cat, figs, heat, pcs=()):
         cards = "".join(f'<figure class="pcf"><a href="figs/pc/{f.name}" target="_blank"><img src="figs/pc/{f.name}" alt="{escape(tl)}"></a><figcaption><b>{escape(tl)}</b><br>{escape(ds)}</figcaption></figure>' for tl, f, ds in pcs)
         pp = (f'<h3>{sid}-2. 주성분·요인 축 결과</h3><p class="note">이 단계의 주성분(PC)·요인·PLS 변수가 무엇을 나타내는지 보여 준다. 누르면 크게 열린다.</p><div class="pcgrid">{cards}</div>')
     n0 = 3 if pcs else 2
-    p2 = (f'<h3>{sid}-{n0}. 변수 간 상관 히트맵</h3><p class="note">83명 Spearman 상관. 왼쪽 5열은 Step 1 인자(복원값)와의 상관, 오른쪽은 신규 인자끼리의 상관이다. 빨강 양의 상관, 파랑 음의 상관. 누르면 크게 열린다.</p>'
+    p2 = (f'<h3>{sid}-{n0}. 변수 간 상관 히트맵</h3><p class="note">83명 Spearman 상관. 왼쪽 5열은 기준 5개 인자(복원값)와의 상관, 오른쪽은 신규 인자끼리의 상관이다. 빨강 양의 상관, 파랑 음의 상관. 누르면 크게 열린다.</p>'
           f'<a href="figs/{heat.name}" target="_blank"><img class="heat" src="figs/{heat.name}" alt="상관 히트맵"></a>')
     g = t[t.y == YS[0]]
     d3 = "".join(f'<tr{kc(sid, r["var"])}><td><code>{escape(DISP.get(r["var"], r["var"]))}</code></td><td>{r["pair"] if pd.notna(r["pair"]) else "<span class=note>짝 없음</span>"}</td>'
-                 f'<td>{escape(r["meaning"]) if pd.notna(r["pair"]) else "Step 1 인자 중 같은 차원이 없어 대체하지 않고 추가 모델만 본다"}</td><td>{nf(r["r_pair"])}</td></tr>' for _, r in g.iterrows())
-    p3 = (f'<h3>{sid}-{n0+1}. 변수 간 대체 관계</h3><p class="note">신규 인자가 Step 1 인자 중 어느 것과 같은 차원(같은 해부학적 의미)을 재는지 미리 정했다. 대체 모델은 그 Step 1 인자를 빼고 신규 인자를 넣는다.</p>'
-          f'<div class="yt"><div class="tw"><table><thead><tr><th>신규 인자</th><th>대체할 Step 1 인자</th><th>도메인 의미</th><th>짝과의 상관 r</th></tr></thead><tbody>{d3}</tbody></table></div></div>')
+                 f'<td>{escape(r["meaning"]) if pd.notna(r["pair"]) else "기준 5개 인자 중 같은 차원이 없어 대체하지 않고 추가 모델만 본다"}</td><td>{nf(r["r_pair"])}</td></tr>' for _, r in g.iterrows())
+    p3 = (f'<h3>{sid}-{n0+1}. 변수 간 대체 관계</h3><p class="note">신규 인자가 기준 5개 인자 중 어느 것과 같은 차원(같은 해부학적 의미)을 재는지 미리 정했다. 대체 모델은 그 기준 5개 인자를 빼고 신규 인자를 넣는다.</p>'
+          f'<div class="yt"><div class="tw"><table><thead><tr><th>신규 인자</th><th>대체할 기준 5개 인자</th><th>도메인 의미</th><th>짝과의 상관 r</th></tr></thead><tbody>{d3}</tbody></table></div></div>')
     divs = []
     for i, y in enumerate(YS):
         body = []
@@ -220,14 +222,14 @@ def nf_html(sid, title, intro, t, cat, figs, heat, pcs=()):
             body.append(f'<tr class="pick {k3}" data-x="{escape(r["var"])}" onclick="showEq(\'{sid}\', this.dataset.x)"><td><code>{escape(DISP.get(r["var"], r["var"]))}</code></td><td>{r["n"]}</td>'
                         f'<td>{r["pair"] if pd.notna(r["pair"]) else ""}</td><td>{r["r2_base"]:.3f}</td>{sub}<td>{nf(r["add_beta"])}</td><td{" class=sig" if r["add_p"] < .05 else ""}>{pf(r["add_p"])}</td>'
                         f'<td>{pf(r["add_q"])}</td><td>{nf(r["add_dR2"], "+.3f")}</td><td>{nf(r["add_vif"], ".2f")}</td></tr>')
-        head = ('<tr><th rowspan=2>변수명</th><th rowspan=2>n</th><th rowspan=2>대체 짝</th><th rowspan=2>Step 1 모델 R²</th>'
-                '<th colspan=4 class="g2">대체 모델 (짝 자리에 X)</th><th colspan=5 class="g3">추가 모델 (Step 1 + X)</th></tr><tr>'
+        head = ('<tr><th rowspan=2>변수명</th><th rowspan=2>n</th><th rowspan=2>대체 짝</th><th rowspan=2>기준 5개 모델 R²</th>'
+                '<th colspan=4 class="g2">대체 모델 (짝 자리에 X)</th><th colspan=5 class="g3">추가 모델 (기준 5개 + X)</th></tr><tr>'
                 '<th class="g2">β</th><th class="g2">p</th><th class="g2">R²</th><th class="g2">ΔR²</th><th class="g3">β</th><th class="g3">p</th><th class="g3">FDR q</th><th class="g3">ΔR²</th><th class="g3">VIF</th></tr>')
         divs.append(f'<div class="yt" data-s="{sid}" data-k="{i}|"{"" if i == 0 else " hidden"}><div class="tw"><table><thead>{head}</thead><tbody>{"".join(body)}</tbody></table></div></div>')
     opts = "".join(f'<option value="{i}">{escape(YL[y])}</option>' for i, y in enumerate(YS))
     p4 = (f'<h3>{sid}-{n0+2}. 회귀 결과</h3><div class="ctl"><label>결과 변수(Y) <select id="y{sid}" onchange="showY(\'{sid}\')">{opts}</select></label>'
-          f'<span class="note">X 전체 요약. 행을 누르면 아래에 그 X의 회귀식 표(Step 1 모델 · 대체 모델 · 추가 모델)가 열린다.</span></div>'
-          '<p class="eq">대체: Y ~ 성별 + 나이 + BMI + Step 1 인자(짝 제외 4개) + X · 추가: Y ~ 성별 + 나이 + BMI + Step 1 인자 5개 + X</p>'
+          f'<span class="note">X 전체 요약. 행을 누르면 아래에 그 X의 회귀식 표(기준 5개 모델 · 대체 모델 · 추가 모델)가 열린다.</span></div>'
+          '<p class="eq">대체: Y ~ 성별 + 나이 + BMI + 기준 5개 인자(짝 제외 4개) + X · 추가: Y ~ 성별 + 나이 + BMI + 기준 5개 인자 5개 + X</p>'
           + "".join(divs) + f'<div class="eqbox" id="eq{sid}"><p class="note">요약표의 행을 누르면 회귀식 표가 여기에 열립니다.</p></div>')
     return f'<h2 id="s{sid}">{escape(title)}</h2><p>{intro}</p>{p1}{pp}{p2}{p3}{p4}'
 
@@ -237,8 +239,8 @@ function tt(m,focus,title,eqn){let h=`<div class="eqc"><p><b>${title}</b><br><sp
  for(const t of m.terms){h+=`<tr${t.t===focus?' class="focus"':''}><td>${TERM[t.t]||t.t}</td><td>${fmt(t.B,'B')}</td><td>${fmt(t.beta,'b')}</td><td class="${t.p<0.05&&t.t!=='const'?'sig':''}">${fmt(t.p,'p')}</td><td>${fmt(t.vif,'v')}</td></tr>`;}
  return h+`</tbody><tfoot><tr><td colspan=5>n ${m.n} · R² ${m.r2.toFixed(3)} · 수정 R² ${m.ar2.toFixed(3)}</td></tr></tfoot></table></div>`;}
 function showEq(s,x){const y=YS[+document.getElementById('y'+s).value];const e=EQ[s][x][y];const nm=TERM[x]||x;const pr=PAIR[s][x];
- const B=BASE[s]||['Step 1 모델 (같은 환자)','Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + PMCA + PAL'];let h=`<h4>${nm} · ${YL[y]}</h4><div class="eqrow">`+tt(e.base,null,B[0],B[1]);
- if(e.sub)h+=tt(e.sub,x,`대체 모델 (${pr} → ${nm})`,`Y ~ 성별 + 나이 + BMI + Step 1 인자(${pr} 제외) + ${nm}`);
+ const B=BASE[s]||['기준 5개 모델 (같은 환자)','Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + PMCA + PAL'];let h=`<h4>${nm} · ${YL[y]}</h4><div class="eqrow">`+tt(e.base,null,B[0],B[1]);
+ if(e.sub)h+=tt(e.sub,x,`대체 모델 (${pr} → ${nm})`,`Y ~ 성별 + 나이 + BMI + 기준 5개 인자(${pr} 제외) + ${nm}`);
  h+=tt(e.add,x,'추가 모델',B[1]+` + ${nm}`)+'</div>';
  const b=document.getElementById('eq'+s);b.innerHTML=h;b.dataset.x=x;
  document.querySelectorAll('.yt[data-s="'+s+'"] tr.pick').forEach(r=>r.classList.toggle('on',r.dataset.x===x));}
@@ -270,7 +272,7 @@ def step2(d):
     cl, r = cluster2(d); same = [v for v in STEP2 if v != REP_PAL and v in d and np.allclose(d[v], d[REP_PAL], equal_nan=True)]
     base = B0+[BCOL[k] for k in ROH]; u = d.dropna(subset=[REP_PMCA, REP_PAL])
     swap = lambda cols, a, b: [b if c == a else c for c in cols]
-    specs = [("Step 1 모델", base), ("PMCA → AWshape_PC1", swap(base, BCOL["PMCA"], REP_PMCA)), ("PAL → H_col", swap(base, BCOL["PAL"], REP_PAL)),
+    specs = [("기준 5개 모델", base), ("PMCA → AWshape_PC1", swap(base, BCOL["PMCA"], REP_PMCA)), ("PAL → H_col", swap(base, BCOL["PAL"], REP_PAL)),
              ("Step 2 모델 (둘 다 대체)", swap(swap(base, BCOL["PMCA"], REP_PMCA), BCOL["PAL"], REP_PAL))]
     models = {y: [(nm, model_json(*fit(u, y, cols), len(u))) for nm, cols in specs] for y in YS}
     base2 = specs[-1][1]; rows, eq = [], {}
@@ -291,7 +293,7 @@ def step2(d):
         elif v in cl: role[v] = ("PMCA", f"AWshape_PC1로 대표 (r = {r.at[v, REP_PMCA]:+.2f})", "기도 단면 크기(굵기)")
         elif v == REP_PAL: role[v] = ("PAL", "대표값: PAL 자리에 넣음", "기도 길이(PNS–Eb 높이)")
         elif v in same: role[v] = ("PAL", "H_col과 같은 값 (중복, 제외)", "기도 길이(PNS–Eb 높이)")
-        else: role[v] = ("", "Step 2 모델 위에 추가", "Step 1에 같은 차원 없음")
+        else: role[v] = ("", "Step 2 모델 위에 추가", "기준 5개 모델에 같은 차원 없음")
     return {"cluster": cl, "same": same, "n": len(u), "models": models, "t": t, "eq": eq, "role": role, "r": r}
 
 
@@ -301,7 +303,7 @@ def step2_html(S2, d, cat, figs, heat, pcs):
     p1 = f'<h3>2-1. 변수 설명</h3><div class="yt"><div class="tw"><table><thead><tr><th>변수명</th><th>변수 뜻</th><th>만든 과정</th><th>CT 위치</th></tr></thead><tbody>{d1}</tbody></table></div></div>'
     cards = "".join(f'<figure class="pcf"><a href="figs/pc/{f.name}" target="_blank"><img src="figs/pc/{f.name}" alt="{escape(tl)}"></a><figcaption><b>{escape(tl)}</b><br>{escape(ds)}</figcaption></figure>' for tl, f, ds in pcs)
     p2 = f'<h3>2-2. 주성분 적재량</h3><div class="pcgrid">{cards}</div>' if pcs else ""
-    p3 = (f'<h3>2-3. 변수 간 상관 히트맵</h3><p class="note">83명 Spearman 상관. 왼쪽 5열은 Step 1 인자(복원값), 오른쪽은 신규 인자끼리. 누르면 크게 열린다.</p>'
+    p3 = (f'<h3>2-3. 변수 간 상관 히트맵</h3><p class="note">83명 Spearman 상관. 왼쪽 5열은 기준 5개 인자(복원값), 오른쪽은 신규 인자끼리. 누르면 크게 열린다.</p>'
           f'<a href="figs/{heat.name}" target="_blank"><img class="heat" src="figs/{heat.name}" alt="상관 히트맵"></a>')
     rr = d[vars_+[BCOL["PMCA"], BCOL["PAL"]]].corr("spearman")
     d4 = "".join(f'<tr><td><code>{escape(v)}</code></td><td>{S2["role"][v][0]}</td><td>{escape(S2["role"][v][1])}</td><td>{escape(S2["role"][v][2])}</td>'
@@ -309,7 +311,7 @@ def step2_html(S2, d, cat, figs, heat, pcs):
     p4 = (f'<h3>2-4. 변수 간 대체 관계</h3><p class="note">히트맵에서 서로 상관이 높게 묶인 기도 크기 지표({", ".join(S2["cluster"])})는 AWshape_PC1 하나로 대표해 PMCA 자리에 넣었다. '
           f'PAL 자리에는 H_col(PNS–Eb 수직 높이)을 넣었다{" (AW_length는 H_col과 같은 값이라 제외)" if S2["same"] else ""}. 나머지는 Step 2 모델 위에 하나씩 추가한다.</p>'
           f'<div class="yt"><div class="tw"><table><thead><tr><th>변수</th><th>대체 짝</th><th>처리</th><th>도메인 의미</th><th>r (PMCA)</th><th>r (PAL)</th></tr></thead><tbody>{d4}</tbody></table></div></div>')
-    eqs = {"Step 1 모델": "Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + PMCA + PAL", "PMCA → AWshape_PC1": "Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + AWshape_PC1 + PAL",
+    eqs = {"기준 5개 모델": "Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + PMCA + PAL", "PMCA → AWshape_PC1": "Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + AWshape_PC1 + PAL",
            "PAL → H_col": "Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + PMCA + H_col", "Step 2 모델 (둘 다 대체)": "Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + AWshape_PC1 + H_col"}
     foc = {"PMCA → AWshape_PC1": [REP_PMCA], "PAL → H_col": [REP_PAL], "Step 2 모델 (둘 다 대체)": [REP_PMCA, REP_PAL]}
     divs = []
@@ -335,7 +337,7 @@ def step2_html(S2, d, cat, figs, heat, pcs):
           f'<span class="note">행을 누르면 아래에 회귀식 표(Step 2 모델 · 추가 모델)가 열린다.</span></div>'
           '<p class="eq">추가: Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + AWshape_PC1 + H_col + X</p>' + "".join(divs) +
           '<div class="eqbox" id="eq2"><p class="note">요약표의 행을 누르면 회귀식 표가 여기에 열립니다.</p></div>')
-    return (f'<h2 id="s2">Step 2. 기도 신규 인자</h2><p>Step 1의 기도 인자(PMCA, PAL)를 신규 기도 지표의 대표값으로 대체한 Step 2 모델을 만들고, 나머지 기도·연구개 지표가 그 위에 더하는지 본다.</p>'
+    return (f'<h2 id="s2">Step 2. 기도 신규 인자</h2><p>기준 5개 모델의 기도 인자(PMCA, PAL)를 신규 기도 지표의 대표값으로 대체한 Step 2 모델을 만들고, 나머지 기도·연구개 지표가 그 위에 더하는지 본다.</p>'
             f'{p1}{p2}{p3}{p4}{p5}{p6}')
 
 
@@ -353,7 +355,7 @@ def step3(d):
     lab = dict(zip(names, fcluster(Z, t=0.3, criterion="distance")))                     # 묶음: 평균 |r| ≳ 0.7
     groups = {}
     for v, c in lab.items(): groups.setdefault(c, []).append(v)
-    subs = dict(SUBS3)                                                                    # Step 1 인자와 확실히 겹치는 것만 대체(사용자 결정)
+    subs = dict(SUBS3)                                                                    # 기준 5개 인자와 확실히 겹치는 것만 대체(사용자 결정)
     best = {k: max([v for v in names if STEP3.get(v) and STEP3[v][0] == k], key=lambda v: abs(r.at[v, BCOL[k]])) for k in ("ANB", "MP-FH", "TDI")}
     rep, role = {}, {}
     for c, mem in groups.items():
@@ -390,13 +392,41 @@ def eqstr(cols):
     return "Y ~ " + " + ".join(TERM.get(c, c).replace(" (복원값)", "") for c in cols)
 
 
+def baseline_report(d, S3):
+    """보고서·CSV·설정을 같은 설명변수 목록에서 생성한다."""
+    specs = [("Roh11_restored", "Step 1：11개 재현 모델 (복원값)", B0+list(Q11.values())),
+             ("Core5", "신규 인자 분석 출발점：기준 5개 모델", B0+[BCOL[k] for k in ROH]),
+             ("Step2", "Step 2：기도 대표값 대체 모델", BASE2),
+             ("Step3", "Step 3：MP-FH 추가 대체 모델", S3["base3"])]
+    rows, manifest = [], {}
+    for key, label, cols in specs:
+        manifest[key] = {"label": label, "columns": cols, "formula": eqstr(cols)}
+        for y in YS:
+            u = d.dropna(subset=cols+[y]); f, terms = fit(u, y, cols)
+            for term, r in terms.items():
+                rows.append({"model": key, "y": y, "term": term, **r, "n": len(u), "R2": f.rsquared, "adjR2": f.rsquared_adj})
+    manifest["Step4"] = {"base": "Core5", "meaning": "기준 5개 모델 위 별도 탐색"}
+    (OUT/"baseline_models.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    pd.DataFrame(rows).round(6).to_csv(OUT/"baseline_models.csv", index=False, encoding="utf-8-sig")
+    body = "".join(f'<tr><td>{escape(label)}</td><td class="eq">{escape(eqstr(cols))}</td>'
+                   f'<td>{len(d.dropna(subset=cols))}</td></tr>' for _, label, cols in specs)
+    return ('<section id="baselines"><h2>분석별 기준 모델</h2>'
+            '<p>Step 1의 11개 모델은 기존 지표의 동시 관련성을 보는 재현 분석이다. 신규 인자 분석은 별도로 고정한 5개 지표에서 출발한다. '
+            '아래 n은 기준 모델의 완전자료 수이며, X를 추가하면 결측에 따라 줄어든다. 서로 다른 행의 R²는 환자 구성이 달라 직접 비교하지 않는다. '
+            '대체·추가 비교에서는 같은 환자로 기준 모델을 다시 적합한다.</p>'
+            '<div class="tw"><table class="reg"><thead><tr><th>분석</th><th>회귀식</th><th>n</th></tr></thead>'
+            f'<tbody>{body}</tbody></table></div><p>Step 4는 기준 5개 모델 위의 별도 탐색이며 Step 3에 이어 쌓은 모델이 아니다. '
+            '5개 지표는 ANB·MP-FH·TDI·PMCA·PAL이다. 모든 모델은 나이·성별·BMI를 포함한다. '
+            '기도 지표를 포함한 이 분석과, 기도를 제외한 골격 총관련성 분석은 구분한다. 계수 유의성과 표본 밖 예측력도 구분한다.</p></section>')
+
+
 def step3_html(S3, d, cat, figs, heat, pcs, intro):
     names = S3["names"]; r = S3["r"]
     d1 = "".join(f'<tr{kc("3", v)}><td><code>{escape(DISP.get(v, v))}</code></td><td>{escape(describe(v, cat)[0])}</td><td>{escape(describe(v, cat)[1])}</td><td>{thumb(v, figs)}</td></tr>' for v in names)
     p1 = legend3()+f'<h3>3-1. 변수 설명</h3><div class="yt"><div class="tw"><table><thead><tr><th>변수명</th><th>변수 뜻</th><th>만든 과정</th><th>CT 위치</th></tr></thead><tbody>{d1}</tbody></table></div></div>'
     cards = "".join(f'<figure class="pcf"><a href="figs/pc/{f.name}" target="_blank"><img src="figs/pc/{f.name}" alt="{escape(tl)}"></a><figcaption><b>{escape(tl)}</b><br>{escape(ds)}</figcaption></figure>' for tl, f, ds in pcs)
     p2 = f'<h3>3-2. 주성분·요인 축 적재량</h3><div class="pcgrid">{cards}</div>' if pcs else ""
-    p3 = (f'<h3>3-3. 변수 간 상관 히트맵</h3><p class="note">83명 Spearman 상관. 왼쪽 5열은 Step 1 인자(복원값), 오른쪽은 신규 인자끼리. 글자 색 = 변수 출처. 누르면 크게 열린다.</p>'
+    p3 = (f'<h3>3-3. 변수 간 상관 히트맵</h3><p class="note">83명 Spearman 상관. 왼쪽 5열은 기준 5개 인자(복원값), 오른쪽은 신규 인자끼리. 글자 색 = 변수 출처. 누르면 크게 열린다.</p>'
           f'<a href="figs/{heat.name}" target="_blank"><img class="heat" src="figs/{heat.name}" alt="상관 히트맵"></a>')
     rep = S3["rep"]; used = [v for v in names if rep[v] == v]
     def rtxt(v):
@@ -410,11 +440,11 @@ def step3_html(S3, d, cat, figs, heat, pcs, intro):
     d4 = "".join(f'<tr{kc("3", v)}><td><code>{escape(DISP.get(v, v))}</code></td><td>{next((k for k, x in S3["subs"].items() if x == v), "")}</td><td>{proc(v)}</td><td>{rtxt(v)}</td>'
                  f'<td>{", ".join(f"{escape(DISP.get(m, m))} ({r.at[m, v]:+.2f})" for m in names if rep[m] == v and m != v)}</td></tr>' for v in order)
     sb = ", ".join(f"{k} → {DISP.get(v, v)}" for k, v in S3["subs"].items())
-    bt = "".join(f'<tr><td>{k}</td><td><code>{escape(DISP.get(v, v))}</code></td><td>{rv:+.2f}</td><td>{"<b>대체</b>" if k in S3["subs"] else "매칭 없음 (Step 1 인자 유지)"}</td></tr>' for k, (v, rv) in S3["best"].items())
-    p4 = (f'<h3>3-4. 변수 간 대체 관계와 묶음</h3><p class="note">Step 1 골격 인자와 확실히 겹치는 Step 3 변수만 대체했다(MP-FH ↔ SN_MP, r = +0.88). ANB·TDI와 가장 많이 겹치는 변수도 |r|이 낮아 매칭 없음으로 두었다.</p>'
-          f'<div class="yt"><div class="tw"><table><thead><tr><th>Step 1 인자</th><th>가장 많이 겹치는 Step 3 변수</th><th>r</th><th>처리</th></tr></thead><tbody>{bt}</tbody></table></div></div>'
+    bt = "".join(f'<tr><td>{k}</td><td><code>{escape(DISP.get(v, v))}</code></td><td>{rv:+.2f}</td><td>{"<b>대체</b>" if k in S3["subs"] else "매칭 없음 (기준 5개 인자 유지)"}</td></tr>' for k, (v, rv) in S3["best"].items())
+    p4 = (f'<h3>3-4. 변수 간 대체 관계와 묶음</h3><p class="note">기준 5개 모델의 골격 인자와 확실히 겹치는 Step 3 변수만 대체했다(MP-FH ↔ SN_MP, r = +0.88). ANB·TDI와 가장 많이 겹치는 변수도 |r|이 낮아 매칭 없음으로 두었다.</p>'
+          f'<div class="yt"><div class="tw"><table><thead><tr><th>기준 5개 인자</th><th>가장 많이 겹치는 Step 3 변수</th><th>r</th><th>처리</th></tr></thead><tbody>{bt}</tbody></table></div></div>'
           f'<p class="note">Step 3 변수끼리 상관이 높은(평균 |r| ≳ 0.7) 것을 같은 묶음 번호로 묶고, 묶음마다 대표값 하나만 실험한다. 아래 표는 Step 3에서 실제로 모델에 넣는 변수만 담았다(대체 1개 + 추가 실험). 대표값이 묶음의 다른 변수를 대신하면 마지막 열에 적었다.</p>'
-          f'<div class="yt"><div class="tw"><table><thead><tr><th>추가할 변수명</th><th>대체 짝</th><th>처리</th><th>r (대체 짝, 없으면 가장 겹치는 Step 1 인자)</th><th>대표하는 변수들 (대표값과의 r)</th></tr></thead><tbody>{d4}</tbody></table></div></div>')
+          f'<div class="yt"><div class="tw"><table><thead><tr><th>추가할 변수명</th><th>대체 짝</th><th>처리</th><th>r (대체 짝, 없으면 가장 겹치는 기준 5개 인자)</th><th>대표하는 변수들 (대표값과의 r)</th></tr></thead><tbody>{d4}</tbody></table></div></div>')
     foc = {nm: [c for c in cols if c not in BASE2] for nm, _, cols in S3["models"][YS[0]]}
     divs = []
     for i, y in enumerate(YS):
@@ -454,13 +484,13 @@ def main():
     names = list(dict.fromkeys(list(MCOL.values())+list(XCOL.values())+list(X11.values())+[v for v in M11.values() if v != 'a_PAV_mm3']+list(STEP2)+list(STEP3)+list(T["var"]))); ex, figs = VF.build(d, names)
     s1 = pd.DataFrame([{"ver": v, "y": y, "term": t, **r, "n": m["n"], "R2": m["r2"], "adjR2": m["ar2"]} for (v, y), m in S1.items() for t, r in m["terms"].items()])  # 11개 판
     s1.round(5).to_csv(OUT/"step1_roh.csv", index=False, encoding="utf-8-sig")
-    intro = {"2": "기도 신규 인자. 단면 관련 지표는 PMCA, 길이·높이 지표는 PAL과 같은 차원으로 보았다. 연구개·비강·위치·모양 지표는 Step 1에 같은 차원이 없다.",
-             "3": "3D 골격 신규 인자. Step 2 모델에서 출발해, Step 1 골격 인자와 확실히 겹치는 MP-FH만 SN_MP로 대체한 Step 3 모델을 만들고, Step 3 변수끼리 묶은 묶음의 대표값과 단독 변수가 그 위에 더하는지 본다.",
-             "4": "연조직·연동·형상 탐색 인자(혀, 저작근, 부비동, 설골, 구강 공간, 요인 점수, 지렛대, 잔여 형상, 공동 축, 부위별 크기·위치). Step 1에 같은 차원이 없어 추가 모델로 판단한다."}
+    intro = {"2": "기도 신규 인자. 단면 관련 지표는 PMCA, 길이·높이 지표는 PAL과 같은 차원으로 보았다. 연구개·비강·위치·모양 지표는 기준 5개 모델에 같은 차원이 없다.",
+             "3": "3D 골격 신규 인자. Step 2 모델에서 출발해, 기준 5개 모델의 골격 인자와 확실히 겹치는 MP-FH만 SN_MP로 대체한 Step 3 모델을 만들고, Step 3 변수끼리 묶은 묶음의 대표값과 단독 변수가 그 위에 더하는지 본다.",
+             "4": "연조직·연동·형상 탐색 인자(혀, 저작근, 부비동, 설골, 구강 공간, 요인 점수, 지렛대, 잔여 형상, 공동 축, 부위별 크기·위치). 기준 5개 모델에 같은 차원이 없어 추가 모델로 판단한다."}
     titles = {"2": "Step 2. 기도 신규 인자", "3": "Step 3. 3D 골격 신규 인자", "4": "Step 4. 연조직·연동·형상 탐색"}
     import osa_pc_figs as PCF
     PCS = PCF.build({"2": list(STEP2), "3": list(STEP3), "4": list(T[T.step == "4"]["var"].unique())})
-    secs = [step1_html(S1, cat, figs, d.attrs["filled11"])]
+    secs = [baseline_report(d, S3), step1_html(S1, cat, figs, d.attrs["filled11"])]
     for s in ("2", "3", "4"):
         t = T[T.step == s]
         if s == "3": intro[s] += " 표의 행 색과 히트맵 글자 색으로 변수 출처를 구분했다(맨 위 범례)."
@@ -478,13 +508,13 @@ tr.pick{{cursor:pointer}}tr.pick:hover td{{background:#f3f6fa}}tr.pick.on td{{ba
 .eqbox{{border:1px solid #b8c2cc;border-radius:6px;padding:8px 12px;margin:10px 0}}.eqrow{{display:flex;gap:16px;flex-wrap:wrap}}.eqc{{flex:1 1 300px}}
 tr.c1 td{{background:#e6efff}}tr.c1 td:first-child{{border-left:4px solid #2563eb}}.legend .c1{{background:#e6efff;border-left:4px solid #2563eb;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c2 td{{background:#f1e9ff}}tr.c2 td:first-child{{border-left:4px solid #7c3aed}}.legend .c2{{background:#f1e9ff;border-left:4px solid #7c3aed;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c3 td{{background:#e3f7ee}}tr.c3 td:first-child{{border-left:4px solid #059669}}.legend .c3{{background:#e3f7ee;border-left:4px solid #059669;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c4 td{{background:#fff1dc}}tr.c4 td:first-child{{border-left:4px solid #d97706}}.legend .c4{{background:#fff1dc;border-left:4px solid #d97706;padding:2px 8px;margin-right:8px;display:inline-block}}tr.rohsig td{{background:#fff3c4}}tr.rohsig td:first-child{{border-left:4px solid #e0a100}}.legend .rohsig{{background:#fff3c4;border-left:4px solid #e0a100;padding:2px 8px;display:inline-block}}.pcgrid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}}.pcf{{margin:0;border:1px solid #b8c2cc;border-radius:6px;padding:6px}}.pcf img{{width:100%}}.pcf figcaption{{font-size:.82rem}}
 .ctl{{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:8px 0}}.ctl select{{font-size:.95rem;padding:3px 6px;max-width:100%}}.eq{{font-family:monospace;font-size:.85rem;margin:6px 0}}</style></head><body><main>
-<h1>83명 단계별 회귀 결과</h1><p class="sub">2026-11-17 · 분할 없음 (계수 유의성 판단용) · 대상 83명 (19세 미만 2명, CBCT 없음 2명 제외, Class III 3명 포함)</p>
-<nav><a href="#s1">Step 1</a><a href="#s2">Step 2</a><a href="#s3">Step 3</a><a href="#s4">Step 4</a></nav>
+<h1>83명 단계별 회귀 결과</h1><p class="sub">2026-11-18 · 분할 없음 (계수 유의성 판단용) · 대상 83명 (19세 미만 2명, CBCT 없음 2명 제외, Class III 3명 포함)</p>
+<nav><a href="#baselines">기준 모델</a><a href="#s1">Step 1</a><a href="#s2">Step 2</a><a href="#s3">Step 3</a><a href="#s4">Step 4</a></nav>
 <div class="box"><b>읽는 법</b><ul>
-<li><b>Step 1</b>은 Roh 2025 Table 3과 같은 동시 다중회귀다. 성별·나이·BMI와 ANB·MP-FH·TDI·PMCA·PAL을 한 모델에 넣었고, '값' 상자로 엑셀 값과 복원값을 바꾼다.</li>
-<li><b>Step 2~4</b>는 같은 순서로 정리했다. <b>1. 변수 설명</b>(무엇을 재는지, 원자료부터 계산까지) → <b>주성분·요인 축 결과</b>(해당 변수가 있는 단계만) → <b>상관 히트맵</b>(Step 1 인자와, 신규 인자끼리) → <b>대체 관계</b>(같은 차원의 Step 1 인자) → <b>회귀 결과</b>(X 전체 요약표, 행을 누르면 회귀식 단위 표).</li>
-<li><b>대체 모델</b>: 같은 차원의 Step 1 인자 자리에 X를 넣는다. ΔR²(Step 1 모델 대비)가 비슷하면 같은 정보, 크면 더 나은 측정이다. <b>추가 모델</b>: Step 1 인자 5개를 모두 둔 채 X를 더한다. 유의하면 Step 1 인자가 보지 못한 새로운 영향이다.</li>
-<li>Step 2~4의 Step 1 인자는 복원값 판(결측은 엑셀 값)이며, X 값이 있는 환자만으로 세 모델을 같은 환자에서 비교했다.</li>
+<li><b>Step 1</b>은 Roh CBCT 지표 11개와 성별·나이·BMI의 재현 분석이다. Roh Table 3의 5개 모델과 구분하며, '값' 상자로 엑셀 값과 복원값을 바꾼다.</li>
+<li><b>Step 2~4</b>는 같은 순서로 정리했다. <b>1. 변수 설명</b>(무엇을 재는지, 원자료부터 계산까지) → <b>주성분·요인 축 결과</b>(해당 변수가 있는 단계만) → <b>상관 히트맵</b>(기준 5개 인자와, 신규 인자끼리) → <b>대체 관계</b>(같은 차원의 기준 5개 인자) → <b>회귀 결과</b>(X 전체 요약표, 행을 누르면 회귀식 단위 표).</li>
+<li><b>대체 모델</b>: 같은 차원의 인자 자리에 X를 넣고 같은 환자에서 R² 변화를 본다. <b>추가 모델</b>: 해당 단계의 기준 모델을 둔 채 X를 더한다. 추가 계수와 FDR q는 해당 모델을 보정한 관련성을 나타낸다. 인과 효과나 표본 밖 예측력은 별도 검증이 필요하다.</li>
+<li>기준 5개 모델은 복원값 판(결측은 엑셀 값)이다. Step 2는 기도 대표값 대체 후, Step 3은 추가로 MP-FH를 SN_MP로 대체한 모델 위에서 X를 더한다. Step 4는 원래 기준 5개 모델 위의 별도 탐색이다. 각 비교는 기준 모델과 X 값이 모두 있는 같은 환자에서 수행한다.</li>
 <li><b>B</b>: 비표준화 계수, <b>β</b>: 표준화 계수(1 SD 증가 시 Y의 SD 변화), <b>p</b>: t 검정(보정 전), <b>FDR q</b>: 단계 안 다중검정 보정, <b>VIF</b>: 다중공선성(5 이상 주의), <b>R²</b>: 모델이 설명하는 Y 분산 비율, <b>수정 R²</b>: 변수 수를 감안한 R². p &lt; 0.05는 굵게. 열 제목을 누르면 정렬된다.</li>
 <li><b>CT 위치</b>: CT에서 바로 잰 변수는 예시 환자(P_{ex})의 CBCT에 위치를 그렸다(누르면 크게). Roh 지표 그림은 기존 CBCT 보고서의 용어 그림(다른 예시 환자)이다. 계산식으로 만든 변수는 그림이 없다.</li></ul></div>
 {"".join(secs)}

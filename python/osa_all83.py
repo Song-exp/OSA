@@ -1,7 +1,7 @@
 """83명 전체(19세 미만 2명·CBCT 없음 2명 제외, Class III 포함) 단계별 회귀 재실행 (분할 없음, 계수 유의성 판단용).
 변수 추출 기준·정의는 기존 그대로. 결과 변수는 리포트 기준 복원 PSG(psg_restored_own.csv).
 단계마다 원래 실험 설정(보정 변수)으로 y ~ 보정 + 변수 하나 OLS → B, 표준화 β, p, n. 단계·결과 변수 안 FDR q는 CSV에만.
-출력: Result_py/analysis/all83/ (steps.csv, patient_values.csv, 전체_83명_단계별_회귀.html)
+출력: Result_py/analysis/all83/ (steps.csv, patient_values.csv, 전체_83명_기존단계별_회귀.html)
 """
 import re, json, warnings; warnings.filterwarnings("ignore")
 from html import escape
@@ -411,7 +411,7 @@ def main():
 <h2 id="pv">환자별 주요 인자값</h2><p class="note">전체 변수 값은 결과 폴더의 환자별 값 파일에 있다.</p><div class="tw">{tab(pvh.round(2).reset_index())}</div>
 <script>function sortBy(th){{const t=th.closest('table'),tb=t.tBodies[0],i=[...th.parentNode.children].indexOf(th);const dir=th.classList.contains('asc')?-1:1;t.querySelectorAll('th').forEach(h=>h.classList.remove('asc','desc'));th.classList.add(dir>0?'asc':'desc');const val=td=>{{const x=td.textContent.trim().replace('<','').replace('+','').replace('−','-');const n=parseFloat(x);return x===''?null:(isNaN(n)?x:n);}};[...tb.rows].sort((r1,r2)=>{{const a=val(r1.cells[i]),b=val(r2.cells[i]);if(a===null)return 1;if(b===null)return -1;return (typeof a==='number'&&typeof b==='number'?a-b:String(a).localeCompare(String(b),'ko'))*dir;}}).forEach(r=>tb.appendChild(r));}}document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('.yt th').forEach(th=>th.addEventListener('click',()=>sortBy(th))));</script><script>function showY(s){{const y=document.getElementById('y'+s).value;const v=document.getElementById('v'+s);const k=y+'|'+(v?v.value:'');document.querySelectorAll('.yt[data-s="'+s+'"]').forEach(e=>{{e.hidden=e.dataset.k!==k;}});}}</script>
 </main></body></html>"""
-    check(html, "83명 단계별 회귀"); f = OUT/"전체_83명_단계별_회귀.html"; f.write_text(html, encoding="utf-8"); print("saved", f)
+    check(html, "83명 단계별 회귀"); f = OUT/"전체_83명_기존단계별_회귀.html"; f.write_text(html, encoding="utf-8"); print("saved", f)
     s = T[T.p < .05][["step", "y", "var", "adj", "n", "beta", "p", "q_BH"]]; pd.set_option("display.width", 220); print(s.round(3).to_string(index=False))
 
 

@@ -50,7 +50,7 @@ from osa.ceph import head_frame
 from run_ali import ROOT, ascii_path
 from run_teeth_seg import free_gb
 
-VERSION = "v1"; CACHE_VERSION = "v1.1"    # 캐시 계산식이 바뀌면 CACHE_VERSION만 올린다
+VERSION = "v1"; CACHE_VERSION = "v1.2"    # 캐시 계산식이 바뀌면 CACHE_VERSION만 올린다
 R_ = ROOT/"Result_py"; EXT = OUT/"restore_ext/v1"; DEST = R_/"features"/VERSION; CACHE = DEST/"cache"
 THETA_DEG, ALPHA_HY = 5., .6
 MMV_TOP, MMV_GRID = 0., 1.    # 구개 평면 아래, 1 mm 격자

@@ -23,7 +23,7 @@ from check_landmarks import read_nrrd
 
 DEST = OUT/"pmca_review/v1"
 STEP, HALF_L, AIR = .4, 30.0, (-1200, -400)
-ANT = (-45.0, 0.0); TOP = 25.0; SMOOTH_MM = 5.0; BOTTOM_CENTER, BOTTOM_AXIAL = 5.0, 1.0
+ANT = (-45.0, 0.0); TOP = 25.0; SMOOTH_MM = 5.0; BOTTOM_CENTER, BOTTOM_AXIAL = 3.0, 1.0    # BOTTOM_CENTER 3: 경계 잘림을 피하는 가장 작은 여유(민감도 확인: 바닥에 붙는 환자 0 mm 31명, 1 mm 13명, 3 mm 3명). 이전 5
 
 
 def airway(vol, Ls, ant, sup, s_ant, s_sup):

@@ -2,8 +2,8 @@
 
 엑셀은 규칙에 쓰지 않는다. 좌표·result.json은 바꾸지 않는다. 전문가 확인 전 탐색용.
 1) 정중면: N·S·Ba·ANS·PNS 최소제곱 평면(Po 미사용). 앞뒤 축 = PNS→ANS, 원점 = PNS.
-2) 설골: 정중 ±3 mm 최대투영 > 450, 탐색창 가장자리에 닿지 않는 가장 큰 덩어리의 뒤쪽 1/3 최상단.
-3) 후두개곡: 정중 ±6 mm 최소투영 공기(< -400, Roh PAV 상한)에서 후두개로 갈린 앞쪽 줄기의 최하점(method=vallecula).
+2) 설골: 정중 ±3 mm 최대투영 > 400 (Dong 2019, 복셀 0.40 mm 최적값), 탐색창 가장자리에 닿지 않는 가장 큰 덩어리의 뒤쪽 1/3 최상단.
+3) 후두개곡: 정중 ±6 mm 최소투영 공기(< -400, Roh PAV 상한)에서 후두개로 갈린 앞쪽 줄기의 최하점(method=vallecula). 탐색 높이 = 설골 몸통 아래 끝 ~ 기준점 +22 mm.
 4) 후두개곡 공기가 없으면: vallecula 환자의 (Eb−설골) 중앙값을 더한 추정(method=hyoid_offset). 높이·거리 근사일 뿐이다.
 5) 설골을 못 찾거나 Eb가 영상 밖이면 미계측(method=none). 기도 공기가 영상 아래 끝까지 이어지면 reason=FOV_bottom.
 출력: Result_py/CBCT/patient_pipeline/v2/eb_review/v2/
@@ -23,9 +23,9 @@ from cbct_patient_pipeline import CB, OUT, digest, landmarks, save
 from check_landmarks import read_nrrd
 
 DEST = OUT/"eb_review/v2"
-STEP, AIR, BONE, MIN_ROWS = .4, -400, 450, 3
-GAP = (1.0, 10.0)              # 후두개 두께로 인정할 앞뒤 간격 mm
-ANT, SUP = (-35, 25), (-95, -35)   # PNS 기준 영상 범위 mm
+STEP, AIR, BONE, MIN_ROWS = .4, -400, 400, 2    # MIN_ROWS 2: 민감도 확인(엑셀 PAL)으로 3에서 낮춤. BONE: Dong 2019 BMC Oral Health, 복셀 0.40 mm 최적 최소 기준(우리 0.39 mm). 이전 450은 근거 기록 없음
+GAP = (0.8, 10.0)              # 후두개 두께로 인정할 앞뒤 간격 mm. 하한 0.8(영상 2칸): 민감도 확인(엑셀 PAL)으로 1.0에서 낮춤. 상한은 실제로 거르는 것이 없음
+ANT, SUP = (-45, 25), (-95, -35)   # PNS 기준 영상 범위 mm. 뒤쪽 끝 −45: 민감도 확인(엑셀 PAL)·육안 판정으로 −35에서 넓힘(기도 뒤쪽이 잘리던 환자)
 HYOID_ANT = (-33, 12)
 MIDLINE = ["N", "S", "Ba", "ANS", "PNS"]
 
@@ -45,7 +45,8 @@ def runs(row):
 
 
 def hyoid(mx, ant, sup):
-    """(면적, 뒤쪽 1/3 앞뒤 평균, 그 최상단) 또는 None."""
+    """(면적, 뒤쪽 1/3 앞뒤 평균, 그 최상단, H 앞뒤, H 위아래, 몸통 아래 끝 높이) 또는 None.
+    뒤쪽 1/3 최상단은 Eb 탐색의 내부 기준(설골 덩어리 고정), H(가장 앞쪽·위쪽 점, 두부계측 문헌 정의)는 설골 피처용."""
     win = (ant > HYOID_ANT[0]) & (ant < HYOID_ANT[1]); lo, hi = np.flatnonzero(win)[[0, -1]]
     lab, n = label((mx > BONE) & win[:, None]); best = None
     for i in range(1, n+1):
@@ -53,21 +54,23 @@ def hyoid(mx, ant, sup):
         if xs.min() <= lo or xs.max() >= hi or zs.min() == 0 or zs.max() == len(sup)-1: continue
         if 8 <= area <= 150 and (xs.max()-xs.min())*STEP < 18 and (best is None or area > best[0]):
             post = ant[xs] <= np.percentile(ant[xs], 33)
-            best = (area, float(ant[xs][post].mean()), float(sup[zs][post].max()))
+            h = np.argmax(ant[xs]+sup[zs])    # 문헌 설골점 H: 몸통의 가장 앞쪽·위쪽 점(앞·위 45° 방향 최대)
+            best = (area, float(ant[xs][post].mean()), float(sup[zs][post].max()), float(ant[xs][h]), float(sup[zs][h]), float(sup[zs].min()))
     return best
 
 
-def vallecula(air, ant, sup, hy):
-    """(앞뒤, 높이, 검출 행 수) 또는 None. sup 오름차순이므로 첫 검출이 최하점."""
+def vallecula(air, ant, sup, hy, c_lo=-18.0, c_hi=2.0, run_back=25.0):
+    """(앞뒤, 높이, 검출 행 수) 또는 None. sup 오름차순이므로 첫 검출이 최하점.
+    c_lo·c_hi: 앞 갈래 중심의 설골 기준 앞뒤 범위, run_back: 설골 기준 이보다 뒤에서 끝나는 공기 줄은 무시(민감도 확인용 인자)."""
     lab, n = label(air)
     if not n: return None
     main = np.bincount(lab.ravel())[1:].argmax()+1; hits = []
     for k, z in enumerate(sup):
-        if not hy[2]-3 <= z <= hy[2]+22: continue
-        rs = [r for r in runs(lab[:, k] == main) if ant[r[1]] >= hy[1]-25]
+        if not hy[5] <= z <= hy[2]+22: continue    # 아래 한계 = 설골 몸통 아래 끝(후두개곡 바닥인 설골–후두개 인대가 몸통에 붙음). 이전: 기준점 −3 mm
+        rs = [r for r in runs(lab[:, k] == main) if ant[r[1]] >= hy[1]-run_back]
         if len(rs) < 2: continue
         back, front = rs[-2], rs[-1]; c = ant[(front[0]+front[1])//2]
-        if GAP[0] <= (front[0]-back[1]-1)*STEP <= GAP[1] and hy[1]-18 <= c <= hy[1]+2: hits.append((float(c), float(z)))
+        if GAP[0] <= (front[0]-back[1]-1)*STEP <= GAP[1] and hy[1]+c_lo <= c <= hy[1]+c_hi: hits.append((float(c), float(z)))
     return (*hits[0], len(hits)) if hits else None
 
 
@@ -93,7 +96,7 @@ def analyse(pid):
     r = {"Patient": f"P_{pid}", "plane_residual_mm": resid, "method": "none", "reason": ""}
     hy = hyoid(np.nan_to_num(mx, nan=-3000), ant, sup)
     if hy:
-        r |= {"hy_ant": hy[1], "hy_sup": hy[2]}; val = vallecula(air, ant, sup, hy)
+        r |= {"hy_ant": hy[1], "hy_sup": hy[2], "H_ant": hy[3], "H_sup": hy[4]}; val = vallecula(air, ant, sup, hy)
         if val and val[2] >= MIN_ROWS: r |= {"Eb_ant": val[0], "Eb_sup": val[1], "n_rows": val[2], "method": "vallecula"}
     else:
         r["reason"] = "FOV_bottom" if air_reaches_bottom(air, mip, ant) else "hyoid_not_found"
@@ -104,6 +107,8 @@ def main():
     DEST.mkdir(parents=True, exist_ok=True)
     cohort = pd.read_csv(OUT/"cohort.csv", dtype=str, keep_default_na=False)
     ids = [int(p[2:]) for p in cohort.loc[cohort.Include.str.lower().isin(["true", "1"]), "Patient"]]
+    frozen = set(pd.read_csv(OUT/"fh_repair/v2/comparison.csv", encoding="utf-8-sig").Patient)    # 동결 54명만(나머지는 cbct_restore_extend가 고정 보정량으로 처리)
+    ids = [i for i in ids if f"P_{i}" in frozen]
     rows, imgs, frames = [], {}, {}
     for pid in ids:
         print(pid, flush=True); r, img, fr, geom = analyse(pid); rows.append(r); imgs[pid] = img; frames[pid] = (fr, geom)

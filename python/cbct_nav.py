@@ -1,7 +1,7 @@
 """NAV 탐색 계산. 경계 평면·임계값은 Roh 정의(A등급), 부비동 제거는 영상 규칙(B등급). 엑셀로 임계값을 맞추지 않는다.
 
 좌표계: 정중 좌표계(Po 미사용, 원점 PNS). ANS–PNS는 항상 높이 0이다.
-Rh: 정중 ±1 mm 뼈(>300) 앞쪽 끝을 N 8 mm 아래부터 ANS 쪽으로 내려가며, 앞쪽 끝이 3 mm 이상 뒤로 물러나기 직전의 행 (비골 하단 끝).
+Rh: 정중 ±1 mm 뼈(>400, Dong 2019 — 설골과 같은 문헌 뼈 기준. 이전 300은 근거 없음, 결과 거의 같음) 앞쪽 끝을 N 8 mm 아래부터 ANS 쪽으로 내려가며, 앞쪽 끝이 3 mm 이상 뒤로 물러나기 직전의 행 (비골 하단 끝).
 공기: -1200~AIR. 위 N–Ba 평면 아래, 아래 ANS–PNS 평면 위, 뒤 S–PNS 평면 앞(Se=Sella 가정), 앞 Rh–ANS 평면 뒤(Rh 위쪽은 N–Rh 평면 뒤).
 부비동 제거: 공기를 SINUS_R(4 mm) 침식해 폭 8 mm 이하 개구를 끊고, 정중 ±8 mm와 겹치지 않는 덩어리를 복원해 뺀다. 남은 공기 중 정중과 이어진 성분이 비강. 부피는 좌우 ±30 mm 안에서만 재고, 그 밖이 10% 넘게 잘리면 누출 의심으로 표시. 사골동 칸은 분리되지 않는다.
 후보 NAV_ts: 같은 경계 안 공기 중 TotalSegmentator head_glands_cavities 비강 라벨 안의 것 (라벨이 있는 환자만).
@@ -26,7 +26,7 @@ from check_landmarks import read_nrrd
 from run_ali import ascii_path
 
 DEST = OUT/"nav_review/v1"
-STEP = .4; HALF_L = 45.; BONE = 300.; JUMP = 3.; SKIP_BELOW_N = 8.; AIR = -400.; SINUS_R = 4.; RIM = 4; LEAK_L = 30.; LEAK_FRAC = .1
+STEP = .4; HALF_L = 45.; BONE = 400.; JUMP = 3.; SKIP_BELOW_N = 8.; AIR = -400.; SINUS_R = 4.; RIM = 4; LEAK_L = 30.; LEAK_FRAC = .1
 XL_NAV = 29
 TS_NASAL = (14, 15)    # head_glands_cavities: nasal_cavity_right, nasal_cavity_left
 
@@ -120,6 +120,8 @@ def ts_figure(ids):
 def main():
     if sys.argv[1:2] == ["--tsfig"]: ts_figure([int(a) for a in sys.argv[2:]]); return
     ids = [int(a) for a in sys.argv[1:]] or [int(p[2:]) for p, i in pd.read_csv(OUT/"cohort.csv", dtype=str, encoding="utf-8-sig")[["Patient", "Include"]].values if i.lower() == "true"]
+    if not sys.argv[1:]:    # 동결 54명만(나머지는 cbct_restore_extend가 같은 규칙으로 계산). cohort.csv 포함 인원이 늘어도 중복되지 않게
+        frozen = set(pd.read_csv(OUT/"fh_repair/v2/comparison.csv", encoding="utf-8-sig").Patient); ids = [i for i in ids if f"P_{i}" in frozen]
     DEST.mkdir(parents=True, exist_ok=True); xl = excel_col(XL_NAV); rows = []; imgs = {}; full = not sys.argv[1:]
     for pid in ids:
         print(pid, end=" ", flush=True); r, im = measure(pid); r["NAV_xl"] = xl.get(pid, np.nan); r["Set"] = "pilot" if pid in PILOT else "eval"; rows.append(r)

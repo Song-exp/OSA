@@ -7,6 +7,7 @@ Eb 설골 보정량 eb_review/v2/summary.json(offset_mm). 새 환자로 기준�
 출력: Result_py/CBCT/patient_pipeline/v2/restore_ext/v1/{new_metrics.csv, compare_all.csv, summary.json}
 사용: python cbct_restore_extend.py            (result.json이 있고 동결 54명이 아닌 환자 전부)
       python cbct_restore_extend.py --check 3 7  (동결 환자 재계산 → 기존 CSV와 같은지 확인)
+      python cbct_restore_extend.py --nav-only  (Rh 규칙 변경 시 NAV만 갱신, 나머지 계측 보존)
 """
 import json
 import sys
@@ -139,11 +140,29 @@ def main():
     new_ids = sorted((done-frozen), key=lambda p: int(p[2:]))
     only = [f"P_{a}" for a in sys.argv[2:]] if sys.argv[1:2] == ["--only"] else None    # 지정 환자만 다시 계산해 기존 결과에 합침
     DEST.mkdir(parents=True, exist_ok=True); rows, failed = [], {}
-    for p in (only or new_ids):
-        assert p in new_ids, p
-        pid = int(p[2:]); print(p, end=" ", flush=True)
-        try: rows += skeletal(pid, ref, profile)+other(pid, offset, xl)
-        except Exception as e: failed[p] = f"{type(e).__name__}: {e}"
+    nav_only = sys.argv[1:2] == ["--nav-only"]
+    if nav_only:
+        previous = pd.read_csv(DEST/"new_metrics.csv", encoding="utf-8-sig")
+        alternatives = pd.read_csv(DEST/"new_alternatives.csv", encoding="utf-8-sig").set_index("Patient")
+        assert set(previous.Patient) == set(new_ids) == set(alternatives.index)
+        assert not previous.duplicated(["Patient", "metric"]).any()
+        assert previous[previous.metric == "NAV"].Patient.nunique() == len(new_ids)
+        # 모든 환자를 성공적으로 계산한 뒤 저장한다. 다른 지표와 기존 결측은 보존한다.
+        for p in new_ids:
+            print(p, end=" ", flush=True)
+            nav, _ = nv.measure(int(p[2:]), keep_imgs=False)
+            previous.loc[(previous.Patient == p) & (previous.metric == "NAV"), "restored"] = nav.get("NAV_ts", np.nan)
+            for key in ("NAV", "NAV_500", "NAV_ts", "NAV_ts_500"):
+                alternatives.loc[p, key] = nav.get(key, np.nan)
+        rows = previous.to_dict("records")
+        ALT.update(alternatives.to_dict("index"))
+        failed = json.loads((DEST/"summary.json").read_text(encoding="utf-8"))["failed"]
+    else:
+        for p in (only or new_ids):
+            assert p in new_ids, p
+            pid = int(p[2:]); print(p, end=" ", flush=True)
+            try: rows += skeletal(pid, ref, profile)+other(pid, offset, xl)
+            except Exception as e: failed[p] = f"{type(e).__name__}: {e}"
     print()
     new = pd.DataFrame(rows); new["source"] = "restore_ext/v1"
     alt = pd.DataFrame.from_dict(ALT, orient="index").rename_axis("Patient").reset_index()

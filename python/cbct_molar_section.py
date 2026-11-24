@@ -123,6 +123,9 @@ def score(d, c):
 
 def main():
     ids = [int(a) for a in sys.argv[1:]] or [int(p[2:]) for p, i in pd.read_csv(OUT/"cohort.csv", dtype=str, encoding="utf-8-sig")[["Patient", "Include"]].values if i.lower() == "true"]
+    if not sys.argv[1:]:
+        frozen = set(pd.read_csv(OUT/"fh_repair/v2/comparison.csv", encoding="utf-8-sig").Patient)
+        ids = [i for i in ids if f"P_{i}" in frozen]
     DEST.mkdir(parents=True, exist_ok=True); rows = []
     for pid in ids:
         rows += measure(pid); print(pid, end=" ", flush=True)

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSA 연관성 분석 · A~F 인자</title>
+<style>
+:root{--ink:#1e293b;--muted:#475569;--navy:#112847;--line:#cbd5e1;--q:#dcfce7;--p:#fff1cb;--paper:#f3f6fb}
+*{box-sizing:border-box}body{margin:0;font:1rem/1.6 system-ui,sans-serif;color:var(--ink);background:var(--paper)}
+header{background:var(--navy);color:#fff}header div,main{max-width:1320px;margin:auto;padding:1.5rem clamp(1rem,4vw,3rem)}
+h1{font-size:clamp(2rem,4vw,3rem);line-height:1.16;margin:.25rem 0}h2{line-height:1.3}
+header p{margin:.5rem 0;color:#e2e8f0}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.7rem;margin:1rem 0}
+.stats div,.panel{background:white;border:1px solid var(--line);border-radius:.65rem;padding:1rem}
+.stats strong{display:block;font-size:1.65rem;font-variant-numeric:tabular-nums}.muted{color:var(--muted)}
+.filters{display:flex;align-items:end;flex-wrap:wrap;gap:.8rem;margin-bottom:1rem}.filters label{display:grid;gap:.2rem;font-weight:600}
+input,select,button{font:inherit;color:inherit}input,select{padding:.4rem .55rem;border:1px solid #8394aa;border-radius:.4rem;background:#fff}
+input{max-width:100%}.meaning{display:block;font-size:.85rem;color:#334155}.table-scroll{overflow:auto;max-height:72vh;border:1px solid var(--line)}
+table{width:100%;border-collapse:separate;border-spacing:0;min-width:910px;font-variant-numeric:tabular-nums}
+th,td{padding:.55rem .65rem;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#e8eef6;position:sticky;top:0;z-index:1;white-space:nowrap}
+th button{border:0;background:transparent;font-weight:700;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:.2em}
+td{background:white}tr.q td{background:var(--q)}tr.p td{background:var(--p)}td.num{white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0}.legend li{padding:.25rem .55rem;border-radius:.3rem}
+.legend .q{background:var(--q);color:#15552d}.legend .p{background:var(--p);color:#714716}
+a{color:#024f88;text-underline-offset:.2em}:focus-visible{outline:3px solid #1470aa;outline-offset:2px}details{margin:1rem 0}
+summary{cursor:pointer;font-weight:700}code{overflow-wrap:anywhere}footer{margin-top:1rem}
+</style>
+</head>
+<body>
+<header><div><h1>OSA 연관성 분석</h1><p>A~F 측정 인자를 하나씩 추가한 보정 회귀 · 83명 코호트</p></div></header>
+<main>
+<div class="stats" id="stats" aria-live="polite"></div>
+<section class="panel" aria-labelledby="table-title">
+<h2 id="table-title">인자별 회귀 결과</h2>
+<div class="filters">
+<label>결과 변수<select id="outcome"></select></label>
+<label>원천 분류<select id="group"><option value="">전체 A~F</option></select></label>
+<label>유의성<select id="signal"><option value="">모든 결과</option><option value="q">FDR q &lt; 0.05</option><option value="p">보정 전 p &lt; 0.05</option><option value="missing">계산 불가</option></select></label>
+<label>피처 검색<input type="search" id="search" placeholder="인자명 또는 의미"></label>
+</div>
+<ul class="legend">
+<li class="q"><b>초록</b> · FDR q &lt; 0.05</li>
+<li class="p"><b>노랑</b> · p &lt; 0.05, q ≥ 0.05</li>
+</ul>
+<p id="shown" class="muted" role="status"></p>
+<div class="table-scroll" role="region" aria-label="인자별 회귀 결과 표" tabindex="0">
+<table><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table>
+</div>
+<footer><a href="results.csv" download>전체 집계 결과 CSV</a> · <a href="https://osa-cbct-feature-guide.sksmsskan123.chatgpt.site">피처 정의 보고서</a></footer>
+</section>
+<details open>
+<summary>분석 설정과 읽는 법</summary>
+<ul>
+<li>공식 PSG 리포트를 바탕으로 복원한 전체 AHI와 앙와위 AHI에 각각 자연로그 log(AHI + 1)을 적용했다.</li>
+<li>선형회귀 <code>log(AHI + 1) ~ 나이 + 성별 + BMI + 인자 하나</code>를 결과별로 적합했다. n은 해당 회귀에서 필요한 값이 모두 있는 환자 수다. 자동 계측 결측을 엑셀값으로 채우는 대신 각각의 계측 열을 별도 분석했다.</li>
+<li>피처 정의 보고서의 A~F를 기준으로 직접 계측값과 해부학적 비율·기하 계산값을 포함했다. G의 PCA·요인·잔차·종합 점수와 혀·구강 공간의 복합비 세 개는 후속 분석 범위다.</li>
+<li>β는 표준화 계수다. 양수면 인자가 클수록 AHI가 높은 방향이다. 괄호는 β의 95% 신뢰구간이다. p는 인자 계수 검정이고, q는 결과 변수별 전체 A~F 검정에 적용한 Benjamini–Hochberg 보정값이다.</li>
+<li>ΔR²는 같은 환자에서 나이·성별·BMI만 넣은 식 대비 해당 인자 하나를 추가했을 때의 R² 증가다. 엑셀·자동 버전과 서로 비슷한 지표가 함께 있어, 유의 행 수가 서로 다른 해부학적 신호의 수를 뜻하지는 않는다.</li>
+<li>후속 회귀식의 후보를 고르는 탐색 분석이다. 이 표는 표본 밖 예측력과 여러 인자를 함께 넣었을 때의 기여를 평가하지 않는다.</li>
+</ul>
+</details>
+</main>
+<script id="report-data" type="application/json">/* REPORT_DATA */</script>
+<script>
+const report = JSON.parse(document.querySelector("#report-data").textContent);
+const columns = [
+  ["group","원천"],["variable","인자"],["n","n"],["beta","β (95% CI)"],
+  ["p","p"],["q","FDR q"],["delta_r2","ΔR²"],["status","판정"]
+];
+const byId = id => document.getElementById(id);
+const controls = ["outcome","group","signal","search"].map(byId);
+let sort = {key:"p", desc:false};
+for (const [key, label] of Object.entries(report.outcomes)) byId("outcome").add(new Option(label,key));
+for (const [key, label] of Object.entries(report.groups)) byId("group").add(new Option(label,key));
+function el(tag, text, cls) {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (cls) node.className = cls;
+  return node;
+}
+for (const [key,label] of columns) {
+  const th = el("th"); th.scope = "col"; th.dataset.key = key;
+  const button = el("button",label); button.type = "button";
+  button.onclick = () => {sort = {key,desc:sort.key === key && !sort.desc}; render();};
+  th.append(button); byId("head").append(th);
+}
+const fmt = (v, digits=3) => v == null ? "—" : v.toFixed(digits);
+const prob = v => v == null ? "—" : v < 0.001 ? v.toExponential(2) : fmt(v,4);
+const status = r => r.q != null && r.q < .05 ? "q" : r.p != null && r.p < .05 ? "p" : "";
+function compare(a,b) {
+  const x = a[sort.key], y = b[sort.key];
+  if (x == null || y == null) return (x == null) - (y == null);
+  const d = typeof x === "number" ? x-y : x.localeCompare(y);
+  return (sort.desc ? -d : d) || a.variable.localeCompare(b.variable);
+}
+function render() {
+  const [outcome, group, signal, search] = controls.map(input => input.value);
+  const all = report.results.filter(r => r.outcome === outcome);
+  const terms = search.trim().toLowerCase().split(/\s+/u);
+  const rows = all.filter(r => (!group || r.group === group)
+    && (!signal || (signal === "missing" ? r.p == null : signal === "q" ? status(r) === "q" : r.p != null && r.p < .05))
+    && terms.every(term => (r.variable+" "+r.description).toLowerCase().includes(term))).sort(compare);
+  byId("stats").replaceChildren(...[
+    ["검토 인자",all.length],["적합 완료",all.filter(r=>r.p!=null).length],
+    ["p < 0.05",all.filter(r=>r.p!=null&&r.p<.05).length],["FDR q < 0.05",all.filter(r=>status(r)==="q").length]
+  ].map(([label,value]) => {const box=el("div");box.append(el("span",label),el("strong",value));return box;}));
+  byId("shown").textContent = report.outcomes[outcome] + " · "+ rows.length+"개 표시 / "+all.length+"개";
+  for (const th of byId("head").children) {
+    if (th.dataset.key === sort.key) th.setAttribute("aria-sort",sort.desc?"descending":"ascending");
+    else th.removeAttribute("aria-sort");
+  }
+  const tableRows = rows.map(r => {
+    const row=el("tr",undefined,status(r)); const feature=el("td");
+    feature.append(el("code",r.variable),el("span",r.description,"meaning"));
+    row.append(el("td",r.group),feature,el("td",r.n,"num"),
+      el("td",r.beta == null?"—":fmt(r.beta)+" ("+fmt(r.low)+", "+fmt(r.high)+")","num"),
+      el("td",prob(r.p),"num"),el("td",prob(r.q),"num"),el("td",fmt(r.delta_r2),"num"),
+      el("td",status(r)==="q"?"보정 후 유의":status(r)==="p"?"보정 전 유의":r.p==null?r.status:"—"));
+    return row;
+  });
+  if (!tableRows.length) {
+    const row=el("tr"),cell=el("td","조건에 맞는 인자가 없습니다.");cell.colSpan=columns.length;row.append(cell);tableRows.push(row);
+  }
+  byId("rows").replaceChildren(...tableRows);
+}
+for (const control of controls) control.addEventListener("input",render);
+render();
+</script>
+</body>
+</html>

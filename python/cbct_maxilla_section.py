@@ -140,6 +140,9 @@ def main():
     if sys.argv[1:2] == ["--fig"]: figure([int(a) for a in sys.argv[2:]]); return
 
     ids = [int(a) for a in sys.argv[1:]] or [int(p[2:]) for p, i in pd.read_csv(OUT/"cohort.csv", dtype=str, encoding="utf-8-sig")[["Patient", "Include"]].values if i.lower() == "true"]
+    if not sys.argv[1:]:
+        frozen = set(pd.read_csv(OUT/"fh_repair/v2/comparison.csv", encoding="utf-8-sig").Patient)
+        ids = [i for i in ids if f"P_{i}" in frozen]
     m = pd.read_csv(OUT/"tdi_review/v1/molars.csv", encoding="utf-8-sig"); DEST.mkdir(parents=True, exist_ok=True)
     d = pd.DataFrame([measure(p, m) for p in ids]); d["Set"] = ["pilot" if int(p[2:]) in PILOT else "eval" for p in d.Patient]
     xl = {k: excel_col(c) for k, c in XL.items()}
