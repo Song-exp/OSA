@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>두개안면 골격·연조직 PCA</title>
+<style>
+  :root { color-scheme: light; font-family: "Malgun Gothic", system-ui, sans-serif; color: #182832; background: #f4f3ef; }
+  * { box-sizing: border-box; }
+  body { max-width: 1450px; margin: auto; padding: 30px 28px; }
+  h1 { margin: 0 0 16px; font-size: clamp(26px, 4vw, 40px); letter-spacing: -.035em; }
+  h2, h3 { margin: 0 0 12px; font-size: 18px; }
+  .sub, .note { color: #50616a; font-size: 13px; line-height: 1.55; margin: 8px 0 0; }
+  nav, .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+  nav { border-bottom: 1px solid #cbd6d4; margin-bottom: 19px; }
+  button, select { font: inherit; color: inherit; cursor: pointer; border: 1px solid #aebbbc; background: white; border-radius: 5px; padding: 7px 11px; }
+  nav button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; padding: 10px 16px; }
+  nav button[aria-pressed="true"] { color: #25576c; border-color: #25576c; font-weight: 700; }
+  .controls { margin-bottom: 14px; }
+  label { font-weight: 700; }
+  .summary { margin: 0 0 14px; color: #25576c; font-weight: 700; line-height: 1.55; }
+  .local-grid { display: grid; grid-template-columns: 1fr .96fr 1.65fr; gap: 12px; }
+  .joint-grid { display: grid; grid-template-columns: .92fr 1.9fr; gap: 12px; }
+  .card { min-width: 0; background: #fff; border: 1px solid #d7dedc; border-radius: 9px; padding: 14px; }
+  canvas { display: block; width: 100%; }
+  .shape-canvas { height: 220px; touch-action: none; cursor: grab; }
+  .shape-canvas:active { cursor: grabbing; }
+  .chart { height: 142px; }
+  .scores { overflow: auto; max-height: 211px; margin-top: 8px; }
+  .features { position: relative; max-height: 350px; overflow: auto; }
+  table { border-collapse: collapse; width: 100%; text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; }
+  th, td { border-bottom: 1px solid #e5ecea; padding: 4px 6px; white-space: nowrap; }
+  th { position: sticky; top: 0; background: #fff; color: #50616a; }
+  td:first-child, th:first-child { text-align: left; }
+  tr[aria-selected="true"] { background: #deedf0; }
+  .pc-row { background: transparent; border: 0; padding: 0; text-decoration: underline; }
+  .features table { text-align: left; }
+  .features td { padding: 7px 8px; vertical-align: top; white-space: normal; }
+  .features td:first-child { width: 28%; }
+  .features td:nth-child(2) { line-height: 1.5; }
+  .features td:first-child button { font-family: ui-monospace, Consolas, monospace; white-space: normal; text-align: left; }
+  .features td:last-child { white-space: nowrap; }
+  .feature-used { color: #25576c; font-weight: 700; }
+  .overview { margin-top: 14px; }
+  .overview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .overview-head h2 { margin: 0; }
+  .overview-frame { margin-top: 12px; overflow: auto; }
+  .overview img { display: block; width: 100%; }
+  .overview img.native { width: auto; max-width: none; }
+  @media(max-width: 1100px) {
+    .local-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .local-grid > :last-child { grid-column: 1 / -1; }
+  }
+  @media(max-width: 630px) {
+    body { padding: 18px 12px; }
+    .local-grid, .joint-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<h1>두개안면 골격·연조직 PCA</h1>
+<nav aria-label="분석 선택">
+  <button id="tab-local" aria-pressed="true">각 부위별 PC</button>
+  <button id="tab-joint" aria-pressed="false">전체 PC 구조</button>
+  <button id="tab-soft" aria-pressed="false">연조직 부위별 PC</button>
+  <button id="tab-final" aria-pressed="false">최종 파생변수</button>
+</nav>
+
+<main>
+  <section id="local">
+    <div class="controls">
+      <label for="region">골격 부위</label><select id="region"></select>
+      <label for="local-pc">모양 PC</label><select id="local-pc"></select>
+      <button id="local-reset">시점 초기화</button>
+    </div>
+    <p id="local-summary" class="summary" aria-live="polite"></p>
+    <div class="local-grid">
+      <article class="card">
+        <h2>골격에서 부위 위치</h2>
+        <canvas id="reference" class="shape-canvas" tabindex="0" aria-label="P_2 골격의 표면 대응점"></canvas>
+        <p class="note">P_2의 골격 표면 대응점에서 선택한 부위를 색으로 강조했습니다.</p>
+      </article>
+      <article class="card">
+        <h2>부위별 설명분산</h2>
+        <canvas id="local-chart" class="chart" role="img" aria-label="부위별 PCA의 설명분산 막대와 누적 설명분산 선"></canvas>
+        <div class="scores" id="local-table"></div>
+      </article>
+      <article class="card">
+        <h2 id="local-feature-title">부위 모양 파생변수</h2>
+        <div class="features" id="local-features"></div>
+        <p class="note">값은 환자별 PC 점수입니다. 크기·위치·회전을 맞춘 표면에서 가장 큰 좌표 성분과 해당 방향의 대표 대응점을 표시합니다. 개별 설명분산 10% 이상은 사용 후보입니다.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="joint" hidden>
+    <div class="controls">
+      <label for="joint-pc">배치 PC</label><select id="joint-pc"></select>
+    </div>
+    <p id="joint-summary" class="summary" aria-live="polite"></p>
+    <div class="joint-grid">
+      <article class="card">
+        <h2>전체 배치 설명분산</h2>
+        <canvas id="joint-chart" class="chart" role="img" aria-label="전체 배치 PCA의 설명분산 막대와 누적 설명분산 선"></canvas>
+        <div class="scores" id="joint-table"></div>
+      </article>
+      <article class="card">
+        <h2>12점 배치 파생변수</h2>
+        <div class="features" id="joint-features"></div>
+        <p class="note">값은 환자별 PC 점수입니다. 12점의 중심과 크기를 맞춘 상태에서 점수가 높아지는 쪽의 상대 위치를 요약했습니다. PC1~PC4는 사용 후보입니다.</p>
+      </article>
+    </div>
+    <article class="overview card">
+      <div class="overview-head">
+        <h2>원본 CBCT부터 PC1~PC4 로딩까지</h2>
+        <button id="enlarge" aria-pressed="false">원본 크기로 보기</button>
+      </div>
+      <p class="note">아래 5패널 그림은 PC1~PC4를 보여줍니다. 위 표에는 95% 기준으로 뽑힌 축을 모두 담았습니다.</p>
+      <div class="overview-frame"><img id="overview-image" loading="lazy" alt="원본 CBCT, 12부위 부피, 12개 중심점 외곽, 부위별 설명률, PC1부터 PC4 로딩"
+           src="data:image/png;base64,__OVERVIEW__"></div>
+    </article>
+  </section>
+
+  <section id="soft" hidden>
+    <div class="controls">
+      <label for="soft-region">연조직 부위</label><select id="soft-region"></select>
+    </div>
+    <p id="soft-summary" class="summary" aria-live="polite"></p>
+    <div class="local-grid">
+      <article class="card">
+        <h2>예시 CBCT에서 부위 위치</h2>
+        <img id="soft-ct" alt="P_2 정중 시상 단면 위 선택 부위와 20구간 경계" style="width:100%;display:block">
+        <p class="note" id="soft-ct-note"></p>
+      </article>
+      <article class="card">
+        <h2>부위별 설명분산</h2>
+        <canvas id="soft-chart" class="chart" role="img" aria-label="연조직 부위 PCA의 설명분산 막대와 누적 설명분산 선"></canvas>
+        <div class="scores" id="soft-table"></div>
+      </article>
+      <article class="card">
+        <h2 id="soft-feature-title">연조직 파생변수</h2>
+        <div class="features" id="soft-features"></div>
+        <p class="note" id="soft-feature-note"></p>
+      </article>
+    </div>
+  </section>
+
+  <section id="final" hidden>
+    <p class="summary" id="final-summary"></p>
+    <article class="card">
+      <h2>최종 파생변수 구성</h2>
+      <div class="scores" id="final-table" style="max-height:none"></div>
+      <p class="note">부위별 모양은 개별 설명분산 10% 이상인 PC만 남겼고, 전체 12점 상대 배치는 PC1~PC4를 고정했습니다. 골격 크기는 저장된 중심 크기(_size, 부위 표면점이 자기 중심에서 퍼진 정도), 연조직 크기는 부피입니다. 골격 크기를 부피(mL)로 바꿔도 피처 수는 같습니다.</p>
+    </article>
+  </section>
+</main>
+
+<script id="pca-data" type="application/json">__PCA_DATA__</script>
+<script>
+const data = JSON.parse(document.getElementById("pca-data").textContent);
+const get = id => document.getElementById(id);
+const format = value => (100 * value).toFixed(2) + "%";
+const defaultView = {yaw: .48, pitch: .25};
+let view = {...defaultView};
+const structures = {MAND: "하악", MAX: "상악", CB: "두개저"};
+let activeTab = "local";
+let frame = null;
+
+for (const [key, name] of Object.entries(structures)) {
+  const group = document.createElement("optgroup");
+  group.label = name;
+  data.local.forEach((region, index) => {
+    if (region.structure === key) group.append(new Option(region.name, index));
+  });
+  get("region").append(group);
+}
+get("region").value = "0";
+
+data.soft.forEach((region, index) => get("soft-region").append(new Option(region.name, index)));
+get("soft-region").value = "0";
+
+function currentModel(tab) {
+  if (tab === "soft") return data.soft[Number(get("soft-region").value)];
+  return tab === "joint" ? data.joint : data.local[Number(get("region").value)];
+}
+
+function pcIndex(tab) {
+  return tab === "soft" ? -1 : Number(get(tab + "-pc").value);
+}
+
+function updateOptions(tab) {
+  const select = get(tab + "-pc");
+  select.replaceChildren(...currentModel(tab).ratios.map((_, i) => new Option("PC" + (i + 1), i)));
+  select.value = "0";
+}
+
+function cumulative(ratios) {
+  let sum = 0;
+  return ratios.map(value => sum += value);
+}
+
+function setPC(tab, index) {
+  get(tab + "-pc").value = index;
+  updateContent(tab);
+}
+
+function showFeatures(tab, model, selected) {
+  const table = document.createElement("table");
+  const header = table.createTHead().insertRow();
+  for (const title of ["파생변수", "점수가 높을 때의 의미", "모델 사용"]) {
+    const cell = document.createElement("th");
+    cell.scope = "col";
+    cell.textContent = title;
+    header.append(cell);
+  }
+  const body = table.createTBody();
+  let activeRow;
+  model.features.forEach((feature, i) => {
+    const row = body.insertRow();
+    const label = document.createElement(tab === "soft" ? "code" : "button");
+    if (tab !== "soft") {
+      label.className = "pc-row";
+      label.onclick = () => setPC(tab, i);
+    }
+    const parts = feature.split("_");
+    parts.forEach((part, index) => {
+      label.append(part);
+      if (index < parts.length - 1) label.append("_", document.createElement("wbr"));
+    });
+    row.insertCell().append(label);
+    row.insertCell().textContent = model.meanings[i];
+    const eligible = tab === "joint" ? i < 4 : model.ratios[i] >= .10;
+    const status = row.insertCell();
+    status.textContent = eligible ? "사용 후보" : "탐색용";
+    if (eligible) status.className = "feature-used";
+    if (i === selected) {
+      activeRow = row;
+      row.setAttribute("aria-selected", "true");
+    }
+  });
+  if (tab === "soft") {
+    const row = body.insertRow(0);
+    row.insertCell().textContent = model.size_var;
+    row.insertCell().textContent = model.size_label;
+    const status = row.insertCell();
+    status.className = "feature-used";
+    status.textContent = "크기";
+  }
+  const container = get(tab + "-features");
+  container.replaceChildren(table);
+  container.scrollTop = activeRow ? Math.max(0, activeRow.offsetTop - table.tHead.offsetHeight) : 0;
+}
+
+function updateContent(tab) {
+  const model = currentModel(tab);
+  const index = pcIndex(tab);
+  const totals = cumulative(model.ratios);
+  const size = tab === "local" ? " · 표면 대응점 " + model.points.toLocaleString("ko") + "개"
+    : tab === "soft" ? " · 20구간 단면적 프로파일 (" + model.lo + " → " + model.hi + ") · 크기 = " + model.size_label : " · 부위별 중심점 12개";
+  get(tab + "-summary").textContent = "PCA 적합 " + model.patients + "명" + size
+    + " · 95% 기준 " + totals.length + "개 PC (누적 " + format(totals.at(-1)) + ")"
+    + (index < 0 ? "" : " · 선택 PC" + (index + 1) + " (" + format(model.ratios[index]) + ")");
+  if (tab === "soft") {
+    get("soft-feature-title").textContent = model.name + " 파생변수";
+    get("soft-feature-note").textContent = "구간은 " + model.lo + "에서 " + model.hi
+      + " 방향으로 1~20번입니다. 모양은 환자별 평균 단면적으로 정규화했고, 개별 설명분산 10% 이상인 PC를 사용 후보로 표시했습니다.";
+    get("soft-ct").src = "data:image/png;base64," + model.ct;
+    get("soft-ct-note").textContent = "P_2 정중 시상 단면" + (model.key === "nasal" ? "(비강은 좌우 ±15 mm 겹침)" : "")
+      + "에 " + model.name + " 영역을 칠하고 20구간 경계를 흰 선으로 표시했습니다.";
+  } else {
+    if (tab === "local") get("local-feature-title").textContent = model.name + " 모양 파생변수";
+  }
+  showFeatures(tab, model, index);
+  const table = document.createElement("table");
+  const head = table.createTHead().insertRow();
+  for (const title of ["축", "설명분산", "누적 설명분산"]) {
+    const cell = document.createElement("th");
+    cell.scope = "col";
+    cell.textContent = title;
+    head.append(cell);
+  }
+  const body = table.createTBody();
+  model.ratios.forEach((ratio, i) => {
+    const row = body.insertRow();
+    const label = row.insertCell();
+    if (tab === "soft") {
+      label.textContent = "PC" + (i + 1);
+    } else {
+      const button = document.createElement("button");
+      button.className = "pc-row";
+      button.textContent = "PC" + (i + 1);
+      button.onclick = () => setPC(tab, i);
+      label.append(button);
+    }
+    row.insertCell().textContent = format(ratio);
+    row.insertCell().textContent = format(totals[i]);
+    if (i === index) row.setAttribute("aria-selected", "true");
+  });
+  get(tab + "-table").replaceChildren(table);
+  scheduleDraw();
+}
+
+function makeCanvas(canvas) {
+  const width = canvas.clientWidth, height = canvas.clientHeight;
+  const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(width * pixelRatio);
+  canvas.height = Math.round(height * pixelRatio);
+  const ctx = canvas.getContext("2d");
+  ctx.scale(pixelRatio, pixelRatio);
+  return {ctx, width, height};
+}
+
+function project([x, y, z], view) {
+  const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw);
+  const cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
+  const forward = cy * x + sy * y;
+  return [-sy * x + cy * y, cp * z - sp * forward, cp * forward + sp * z];
+}
+
+function plotPoints(canvas, positions, view, radius, fill) {
+  const {ctx, width, height} = makeCanvas(canvas);
+  const scale = .44 * Math.min(width, height) / radius;
+  const points = positions.map(point => {
+    const [x,y,depth] = project(point, view);
+    return [width/2 + scale*x, height/2 - scale*y, depth];
+  });
+  const order = points.map((_, i) => i).sort((a, b) => points[a][2] - points[b][2]);
+  const draw = (i, style) => {
+    ctx.fillStyle = style.color;
+    ctx.globalAlpha = style.opacity;
+    ctx.beginPath();
+    ctx.arc(points[i][0], points[i][1], style.radius, 0, 2 * Math.PI);
+    ctx.fill();
+  };
+  const styled = order.map(i => [i, fill(i)]);
+  for (const [i, style] of styled) if (!style.highlight) draw(i, style);
+  for (const [i, style] of styled) if (style.highlight) draw(i, style);
+  ctx.globalAlpha = 1;
+}
+
+const center = [0, 1, 2].map(i => data.reference.reduce((sum, point) => sum + point[i], 0) / data.reference.length);
+const anatomy = data.reference.map(point => center.map((value, i) => point[i] - value));
+const anatomyRadius = Math.max(...anatomy.map(point => Math.hypot(...point)));
+
+function finalTable() {
+  const rows = [], skeletal = {MAND: "하악", MAX: "상악", CB: "두개저"};
+  const keep = ratios => ratios.map((r, i) => [i, r]).filter(([, r]) => r >= .10);
+  const pcs = k => k.length ? k.map(([i, r]) => "PC" + (i + 1) + " " + format(r)).join(", ") : null;
+  const sum = k => k.reduce((s, [, r]) => s + r, 0);
+  data.local.forEach(r => {
+    const k = keep(r.ratios);
+    rows.push({block: "골격 · " + skeletal[r.structure], name: r.name, shape: pcs(k) ?? "0개 — PC1 " + format(r.ratios[0]) + "로 기준 미달",
+               cum: k.length ? format(sum(k)) : "—", size: "중심 크기", n: k.length + 1, nshape: k.length, nsize: 1});
+  });
+  const j = data.joint.ratios.slice(0, 4).map((r, i) => [i, r]);
+  rows.push({block: "골격 · 전체", name: "전체 12점 상대 배치", shape: pcs(j), cum: format(sum(j)), size: "—", n: 4, nshape: 4, nsize: 0});
+  data.soft.forEach(r => {
+    const k = keep(r.ratios);
+    rows.push({block: "연조직", name: r.name, shape: pcs(k) ?? "0개", cum: k.length ? format(sum(k)) : "—", size: "부피 (" + r.size_var + ")", n: k.length + 1, nshape: k.length, nsize: 1});
+  });
+  const tot = (pred, f) => rows.filter(pred).reduce((s, r) => s + r[f], 0);
+  const sk = r => r.block.startsWith("골격"), so = r => r.block === "연조직", any = () => true;
+  const table = document.createElement("table"), head = table.createTHead().insertRow();
+  for (const t of ["구분", "부위", "남긴 모양·배치 축 (개별 10% 이상)", "누적 설명분산", "크기", "합계"]) {
+    const c = document.createElement("th"); c.scope = "col"; c.textContent = t; head.append(c);
+  }
+  const body = table.createTBody();
+  const add = (cells, strong) => { const row = body.insertRow(); cells.forEach(v => { const c = row.insertCell(); c.textContent = v; if (strong) c.style.fontWeight = 700; }); };
+  rows.forEach(r => add([r.block, r.name, r.shape, r.cum, r.size, r.n]));
+  add(["골격 합계", "", "부위 모양 " + tot(r => sk(r) && r.size !== "—", "nshape") + "개 + 전체 배치 4개", "", tot(sk, "nsize") + "개", tot(sk, "n")], true);
+  add(["연조직 합계", "", "모양 " + tot(so, "nshape") + "개", "", tot(so, "nsize") + "개", tot(so, "n")], true);
+  add(["전체 합계", "", "", "", "", tot(any, "n")], true);
+  get("final-table").replaceChildren(table);
+  get("final-summary").textContent = "최종 파생변수 " + tot(any, "n") + "개 · 골격 " + tot(sk, "n") + "개 + 연조직(인두 기도·비강·혀) " + tot(so, "n") + "개";
+}
+
+function drawAnatomy() {
+  const model = currentModel("local");
+  const region = Number(get("region").value);
+  plotPoints(get("reference"), anatomy, view, anatomyRadius, i => {
+    const highlight = data.reference[i][3] === region;
+    return {highlight, opacity: highlight ? .9 : .3, radius: highlight ? 1.55 : .95,
+            color: highlight ? model.color : "#8a9ea6"};
+  });
+}
+
+function drawChart(tab) {
+  const model = currentModel(tab);
+  const {ctx, width, height} = makeCanvas(get(tab + "-chart"));
+  const ratios = model.ratios, totals = cumulative(ratios), count = ratios.length;
+  const left = 38, right = width - 34, top = 22, bottom = height - 22;
+  const step = (right - left) / count;
+  const max = ratios[0] * 1.08;
+  const x = i => left + (i + .5) * step;
+  const y = fraction => bottom - fraction * (bottom - top);
+  ctx.font = "10px 'Malgun Gothic', sans-serif";
+  ctx.fillStyle = "#50616a";
+  ctx.fillText("PC별 %", 1, 11);
+  ctx.textAlign = "right";
+  ctx.fillText("누적 %", width - 1, 11);
+  ctx.strokeStyle = "#d7dedc";
+  ctx.beginPath();
+  ctx.moveTo(left, bottom);
+  ctx.lineTo(right, bottom);
+  ctx.stroke();
+  ctx.fillText(format(ratios[0]), left - 4, y(ratios[0] / max) + 4);
+  ctx.fillText("0%", left - 4, bottom + 4);
+  ctx.textAlign = "left";
+  ctx.fillText("95%", right + 4, y(.95) + 4);
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = "#8e9b9c";
+  ctx.beginPath();
+  ctx.moveTo(left, y(.95));
+  ctx.lineTo(right, y(.95));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ratios.forEach((v, i) => {
+    ctx.fillStyle = i === pcIndex(tab) ? "#25576c" : "#a5b9be";
+    const height = Math.max(.5, bottom - y(v / max));
+    ctx.fillRect(x(i) - step * .35, bottom - height, step * .7, height);
+  });
+  ctx.strokeStyle = "#a55920";
+  ctx.lineWidth = 1.35;
+  ctx.beginPath();
+  totals.forEach((v, i) => i === 0 ? ctx.moveTo(x(i), y(v)) : ctx.lineTo(x(i), y(v)));
+  ctx.stroke();
+  ctx.fillStyle = "#50616a";
+  ctx.fillText("PC1", left, height - 4);
+  ctx.textAlign = "right";
+  ctx.fillText("PC" + count, right, height - 4);
+}
+
+function scheduleDraw() {
+  if (frame === null) frame = requestAnimationFrame(() => {
+    frame = null;
+    if (activeTab === "final") return;
+    if (activeTab === "local") drawAnatomy();
+    drawChart(activeTab);
+  });
+}
+
+function bindRotation(canvas) {
+  let drag;
+  canvas.addEventListener("pointerdown", event => {
+    canvas.setPointerCapture(event.pointerId);
+    drag = [event.clientX, event.clientY, view.yaw, view.pitch];
+  });
+  function rotate(yaw, pitch) {
+    view = {yaw, pitch: Math.max(-1.5, Math.min(1.5, pitch))};
+    scheduleDraw();
+  }
+  canvas.addEventListener("pointermove", event => {
+    if (drag) rotate(drag[2] + (event.clientX-drag[0])*.012, drag[3] + (event.clientY-drag[1])*.012);
+  });
+  for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    canvas.addEventListener(name, () => { drag = null; });
+  }
+  canvas.addEventListener("keydown", event => {
+    const delta = {ArrowLeft: [-.14,0], ArrowRight: [.14,0], ArrowUp: [0,-.14], ArrowDown: [0,.14]}[event.key];
+    if (delta) {
+      event.preventDefault();
+      rotate(view.yaw + delta[0], view.pitch + delta[1]);
+    }
+  });
+}
+
+bindRotation(get("reference"));
+get("local-reset").onclick = () => { view = {...defaultView}; scheduleDraw(); };
+get("region").onchange = () => {
+  updateOptions("local");
+  updateContent("local");
+};
+const sections = ["local", "joint", "soft", "final"];
+for (const tab of sections) {
+  get("tab-" + tab).onclick = () => {
+    activeTab = tab;
+    for (const section of sections) {
+      get(section).hidden = section !== tab;
+      get("tab-" + section).setAttribute("aria-pressed", String(section === tab));
+    }
+    if (tab === "final") finalTable(); else updateContent(tab);
+  };
+  if (tab === "final" || tab === "soft") continue;
+  get(tab + "-pc").onchange = () => updateContent(tab);
+  updateOptions(tab);
+}
+get("soft-region").onchange = () => updateContent("soft");
+get("enlarge").onclick = () => {
+  const expanded = get("overview-image").classList.toggle("native");
+  get("enlarge").textContent = expanded ? "화면에 맞추기" : "원본 크기로 보기";
+  get("enlarge").setAttribute("aria-pressed", String(expanded));
+};
+window.addEventListener("resize", scheduleDraw);
+updateContent("local");
+</script>

@@ -53,3 +53,6 @@ docs/데이터_인수인계_정리.md
 # site repos (own git) and packaged builds
 sites/*/
 sites/*.tar.gz
+
+# 배포용 회귀 UI (환자 자료가 HTML에 들어 있음)
+dist/

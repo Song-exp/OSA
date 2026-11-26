@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OSA 회귀 분석</title>
+<style>
+  :root { font-family: "Malgun Gothic", system-ui, sans-serif; color: #172a34; background: #f3f5f4; }
+  * { box-sizing: border-box; }
+  body { max-width: 1260px; margin: auto; padding: 32px 24px; }
+  h1 { font-size: clamp(24px,4vw,36px); margin: 0 0 8px; }
+  h2 { font-size: 19px; margin: 0 0 12px; }
+  p { line-height: 1.55; }
+  .muted { color: #54676e; font-size: 13px; }
+  header { margin-bottom: 22px; }
+  main { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.08fr); gap: 16px; align-items: start; }
+  section { background: white; border: 1px solid #d4e0de; border-radius: 10px; padding: 16px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 12px; }
+  .toolbar h2 { margin: 0; }
+  details { border: 1px solid #dbe4e3; border-radius: 7px; margin-top: 6px; }
+  summary { cursor: pointer; padding: 9px 11px; font-weight: 700; font-size: 14px; }
+  summary span { color: #54676e; font-weight: 400; margin-left: 9px; }
+  .option { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; margin: 0 6px; border-top: 1px solid #eef2f1; cursor: pointer; font-size: 13px; }
+  .option:has(input:checked) { background: #e7f3f3; }
+  .option input { accent-color: #1c6267; margin-top: 4px; }
+  .option small { display: block; color: #54676e; line-height: 1.5; margin-top: 3px; }
+  .feature-head { display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap; }
+  .option.roh-significant { border-inline-start: 3px solid #bb8a24; }
+  .roh-badge { border-radius: 4px; padding: 2px 5px; background: #f4d67d; color: #614007; font-size: 11px; }
+  select, button { font: inherit; border: 1px solid #98aeb0; background: white; color: inherit; border-radius: 6px; padding: 7px 11px; }
+  button, select { cursor: pointer; }
+  button:disabled { opacity: .52; cursor: default; }
+  .primary { background: #1c6267; color: white; border-color: #1c6267; font-weight: 700; }
+  .run-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .run-controls label { font-size: 13px; font-weight: 700; }
+  #analysis { position: sticky; top: 12px; display: grid; gap: 12px; max-height: calc(100vh - 24px); overflow: auto; }
+  .ct-stage { display: grid; position: relative; background: #101820; border-radius: 6px; overflow: hidden; margin: 0; }
+  .ct-stage img { display: block; width: 100%; }
+  .ct-stage .ct-layer { position: absolute; inset: 0; height: 100%; }
+  #ct-stage { max-width: 315px; margin-inline: auto; }
+  #ct-note { margin: 9px 0 0; }
+  .ct-legend { display: flex; gap: 5px 12px; flex-wrap: wrap; margin-top: 8px; }
+  .ct-legend span { font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+  .ct-legend i { width: 10px; height: 10px; border: 1px solid #607079; border-radius: 50%; }
+  #feature-preview { position: fixed; width: min(280px, calc(100vw - 16px)); z-index: 5; padding: 12px;
+    border: 1px solid #a4b6b7; border-radius: 8px; background: white; box-shadow: 0 5px 24px #17344028; pointer-events: none; }
+  #feature-preview p { margin: 4px 0 8px; }
+  #preview-stage { max-width: 205px; margin-inline: auto; }
+  #preview-region { margin-bottom: 0 !important; }
+  #selected { margin: 12px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border-radius: 20px; padding: 3px 8px; font-size: 12px; background: #eef6f6; }
+  #message { margin: 12px 0 0; font-size: 13px; }
+  #message.error { color: #a32331; }
+  .metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; margin-top: 13px; }
+  .metric { background: #eef4f3; border-radius: 6px; padding: 9px; font-size: 12px; }
+  .metric strong { display: block; font-size: 19px; margin-top: 3px; }
+  #equation { padding: 10px; background: #f4f6f5; border-radius: 6px; overflow-wrap: anywhere; font-size: 13px; }
+  .results-table { overflow: auto; max-height: 410px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid #e3eae8; text-align: right; white-space: nowrap; }
+  th { position: sticky; top: 0; background: white; }
+  td:first-child, th:first-child { text-align: left; }
+  @media(max-width:800px) { main { grid-template-columns: 1fr; } #analysis { position: static; max-height: none; overflow: visible; } body { padding: 20px 12px; } }
+  #search { width:100%; padding:9px; border:1px solid #98aeb0; border-radius:6px; }
+  #stages { display:flex; flex-wrap:wrap; gap:6px 12px; margin:8px 0 18px; }
+  .bulk { display:inline-flex; gap:4px; align-items:center; font-size:13px; cursor:pointer; }
+  .picker { display:grid; grid-template-columns:minmax(105px, 30%) 1fr; gap:12px; }
+  #regions > div { display:flex; align-items:center; margin-bottom:4px; }
+  #regions button { text-align:left; font-size:13px; flex:1; }
+  #regions button[aria-pressed=true] { background:#d9eded; }
+  .subheading { margin:10px 0 4px; font-weight:700; }
+  [hidden] { display:none !important; }
+</style>
+<header>
+  <h1>OSA 회귀 분석</h1>
+  <p id="cohort" class="muted"></p>
+</header>
+<main>
+  <section aria-label="설명변수 선택">
+    <div class="toolbar">
+      <h2>부위별 피처 선택</h2>
+      <div><button id="all" disabled>전체 선택</button> <button id="clear" disabled>전체 해제</button></div>
+    </div>
+    <label for="search">피처 검색</label>
+    <input id="search" type="search" placeholder="부위, 피처명 또는 변수 코드">
+    <h3>피처 생성 단계별 선택</h3><div id="stages"></div>
+    <div class="picker"><nav id="regions" aria-label="부위 선택"></nav>
+    <div><div id="groups"></div><p id="empty" hidden>검색 결과가 없습니다.</p></div></div>
+  </section>
+  <div id="analysis">
+    <section aria-labelledby="ct-heading">
+      <h2 id="ct-heading">선택 피처의 CBCT 위치</h2>
+      <figure id="ct-stage" class="ct-stage"></figure>
+      <div id="ct-legend" class="ct-legend"></div>
+      <p id="ct-note" class="muted" aria-live="polite">CBCT 이미지를 준비하고 있습니다.</p>
+    </section>
+    <section>
+    <h2>회귀 결과</h2>
+    <div class="run-controls">
+      <label for="outcome">결과변수</label>
+      <select id="outcome"></select>
+      <button id="run" class="primary" disabled>회귀식 돌리기</button>
+    </div>
+    <p id="selection-count" class="muted">선택 0개</p>
+    <div id="selected"></div>
+    <p id="message" aria-live="polite">피처를 선택하면 회귀를 실행할 수 있습니다.</p>
+    <div id="result" hidden>
+      <div class="metrics" id="metrics"></div>
+      <p class="muted" id="sample-note"></p>
+      <p id="equation"></p>
+      <div class="results-table">
+        <table>
+          <thead><tr><th scope="col">인자</th><th scope="col">회귀계수</th><th scope="col">표준오차</th><th scope="col">p값</th><th scope="col">95% CI</th></tr></thead>
+          <tbody id="terms"></tbody>
+        </table>
+      </div>
+    </div>
+    </section>
+  </div>
+</main>
+<div id="feature-preview" role="tooltip" hidden>
+  <strong id="preview-name"></strong>
+  <p id="preview-description" class="muted"></p>
+  <figure id="preview-stage" class="ct-stage"></figure>
+  <p id="preview-region" class="muted"></p>
+</div>
+
+<script>
+const element = id => document.getElementById(id);
+const selected = new Set();
+const inputs = new Map();
+const bulkControls = [];
+const panels = [];
+let activeRegion = "";
+const featureInfo = new Map();
+let requestVersion = 0;
+let anatomy = null;
+let anatomyError = false;
+let preview = null;
+
+function message(text, error = false) {
+  const status = element("message");
+  status.textContent = text;
+  status.classList.toggle("error", error);
+}
+
+function layerImage(src, label, overlay = false) {
+  const image = document.createElement("img");
+  image.src = src;
+  image.alt = label;
+  if (overlay) {
+    image.className = "ct-layer";
+    image.setAttribute("aria-hidden", "true");
+  }
+  return image;
+}
+
+function drawCT(stage, keys) {
+  if (!anatomy) return [];
+  const layers = [...new Set(keys)].map(key => anatomy.layers[key]).filter(Boolean)
+    .sort((a, b) => Number(a.marker) - Number(b.marker));
+  stage.replaceChildren(
+    layerImage(anatomy.base, anatomy.patient + " CBCT 시상 단면. " + layers.map(layer => layer.label).join(", ")),
+    ...layers.map(layer => layerImage(layer.image, "", true))
+  );
+  return layers;
+}
+
+function updateCT() {
+  const stage = element("ct-stage");
+  const note = element("ct-note");
+  const legend = element("ct-legend");
+  if (anatomyError) {
+    note.textContent = "CBCT 이미지를 불러오지 못했습니다.";
+    return;
+  }
+  if (!anatomy) return;
+  const keys = [...selected].flatMap(name => featureInfo.get(name).layers);
+  const layers = drawCT(stage, keys);
+  legend.replaceChildren(...layers.map(layer => {
+    const label = document.createElement("span");
+    const swatch = document.createElement("i");
+    swatch.style.background = layer.color;
+    label.append(swatch, layer.label);
+    return label;
+  }));
+  note.textContent = selected.size
+    ? anatomy.patient + " 예시 시상 단면. 측면에 있는 구조는 단면 위에 투영했고, 각도·거리 피처는 기준점을 표시했습니다."
+    : anatomy.patient + " 예시 시상 단면. 피처를 선택하면 관련 부위와 기준점이 표시됩니다.";
+}
+
+function placePreview() {
+  if (!preview) return;
+  const panel = element("feature-preview");
+  const gap = 12;
+  const preferred = preview.x + gap;
+  const left = preferred + panel.offsetWidth < innerWidth ? preferred : preview.x - panel.offsetWidth - gap;
+  panel.style.left = Math.max(8, Math.min(left, innerWidth - panel.offsetWidth - 8)) + "px";
+  panel.style.top = Math.max(8, Math.min(preview.y + gap, innerHeight - panel.offsetHeight - 8)) + "px";
+}
+
+function renderPreview() {
+  if (!preview) return;
+  const feature = featureInfo.get(preview.name);
+  const panel = element("feature-preview");
+  element("preview-name").textContent = feature.label;
+  element("preview-description").textContent = feature.group + " · " + feature.description;
+  element("preview-stage").hidden = !feature.layers.length;
+  const layers = drawCT(element("preview-stage"), feature.layers);
+  element("preview-region").textContent = !feature.layers.length ? "환자 전체 특성" : anatomy
+    ? anatomy.patient + " · " + layers.map(layer => layer.label).join(", ")
+    : anatomyError ? "CBCT 이미지 불러오기 실패" : "CBCT 이미지 준비 중";
+  panel.hidden = false;
+  placePreview();
+}
+
+function previewOn(target, name) {
+  function hide() {
+    if (preview?.target !== target) return;
+    preview = null;
+    element("feature-preview").hidden = true;
+  }
+  target.addEventListener("pointerenter", event => {
+    if (event.pointerType === "touch") return;
+    preview = {target, name, x: event.clientX, y: event.clientY};
+    renderPreview();
+  });
+  target.addEventListener("pointermove", event => {
+    if (preview?.target !== target || event.pointerType === "touch") return;
+    preview.x = event.clientX;
+    preview.y = event.clientY;
+    placePreview();
+  });
+  target.addEventListener("pointerleave", hide);
+  target.addEventListener("focusin", () => {
+    const box = target.getBoundingClientRect();
+    preview = {target, name, x: box.right, y: box.top};
+    renderPreview();
+  });
+  target.addEventListener("focusout", hide);
+}
+
+function refreshSelection() {
+  for (const [name, input] of inputs) input.checked = selected.has(name);
+  for (const {box, counter, features} of bulkControls) {
+    const n = features.filter(f => selected.has(f.id)).length;
+    box.checked = n === features.length;
+    box.indeterminate = n > 0 && n < features.length;
+    counter.textContent = n + "/" + features.length;
+  }
+  element("all").disabled = selected.size === inputs.size;
+  requestVersion++;
+  const count = selected.size;
+  element("selection-count").textContent = "선택 " + count + "개" +
+    (count ? " · " + (count === 1 ? "단순회귀" : "다중회귀") : "");
+  element("run").disabled = !count;
+  element("clear").disabled = !count;
+  element("result").hidden = true;
+  element("selected").replaceChildren(...[...selected].map(name => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    chip.textContent = featureInfo.get(name).label + " ×";
+    chip.setAttribute("aria-label", name + " 선택 해제");
+    previewOn(chip, name);
+    chip.onclick = () => {
+      inputs.get(name).checked = false;
+      selected.delete(name);
+      refreshSelection();
+    };
+    return chip;
+  }));
+  if (preview && !preview.target.isConnected) {
+    preview = null;
+    element("feature-preview").hidden = true;
+  }
+  updateCT();
+  message(count ? "선택한 피처와 결과변수로 회귀를 실행할 수 있습니다." : "피처를 선택하면 회귀를 실행할 수 있습니다.");
+}
+
+function bulk(name, features) {
+  const label = document.createElement("label");
+  label.className = "bulk";
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.setAttribute("aria-label", name + " 전체 선택");
+  const counter = document.createElement("small");
+  label.append(box, name, counter);
+  bulkControls.push({box, counter, features});
+  box.onchange = () => {
+    for (const f of features) {
+      if (box.checked) selected.add(f.id);
+      else selected.delete(f.id);
+    }
+    refreshSelection();
+  };
+  return label;
+}
+
+function filterList() {
+  const query = element("search").value.trim().toLowerCase();
+  let shown = 0;
+  for (const panel of panels) {
+    panel.button.setAttribute("aria-pressed", String(!query && panel.name === activeRegion));
+    let matches = 0;
+    for (const block of panel.blocks) {
+      let count = 0;
+      for (const row of block.rows) {
+        row.label.hidden = query ? !row.text.includes(query) : panel.name !== activeRegion;
+        if (!row.label.hidden) count++;
+      }
+      block.section.hidden = !count;
+      matches += count;
+    }
+    panel.section.hidden = !matches;
+    shown += matches;
+  }
+  element("empty").hidden = shown > 0;
+}
+
+function renderGroups(data) {
+  element("cohort").textContent = "피처 " + data.featureCount + "개 · 원본 코호트 " + data.n + "명 · 절편 포함 선형회귀";
+  for (const outcome of data.outcomes) element("outcome").add(new Option(outcome.label, outcome.id));
+  const stages = new Map();
+  const order = ["환자 기본정보","기도","연구개","혀","상악골","하악골","두개저","악골·치열 계측","골격 전체 배치"];
+  data.groups.sort((a,b) => order.indexOf(a.name) - order.indexOf(b.name));
+  activeRegion = data.groups[0].name;
+  for (const group of data.groups) {
+    const nav = document.createElement("div");
+    const toggle = bulk("", group.features);
+    toggle.firstChild.setAttribute("aria-label", group.name + " 전체 선택");
+    const button = document.createElement("button");
+    button.textContent = group.name;
+    button.onclick = () => {
+      activeRegion = group.name;
+      element("search").value = "";
+      filterList();
+    };
+    nav.append(toggle, button);
+    element("regions").append(nav);
+    const section = document.createElement("div");
+    const heading = document.createElement("h2");
+    heading.textContent = group.name;
+    section.append(heading);
+    element("groups").append(section);
+    const blocks = new Map();
+    for (const feature of group.features) {
+      if (!stages.has(feature.stage)) stages.set(feature.stage, []);
+      stages.get(feature.stage).push(feature);
+      if (!blocks.has(feature.subgroup)) blocks.set(feature.subgroup, {section: document.createElement("div"), rows: [], features: []});
+      const blockInfo = blocks.get(feature.subgroup);
+      blockInfo.features.push(feature);
+      const label = document.createElement("label");
+      label.className = "option";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = feature.id;
+      inputs.set(feature.id, checkbox);
+      featureInfo.set(feature.id, {...feature, group: group.name});
+      previewOn(label, feature.id);
+      checkbox.onchange = () => {
+        if (checkbox.checked) selected.add(feature.id);
+        else selected.delete(feature.id);
+        refreshSelection();
+      };
+      const block = document.createElement("span");
+      const head = document.createElement("span");
+      head.className = "feature-head";
+      const name = document.createElement("strong");
+      name.textContent = feature.label;
+      head.append(name);
+      const paperStatus = feature.rohSignificant ? "[원 논문 결과: 유의]" : "";
+      if (paperStatus) {
+        label.classList.add("roh-significant");
+        const badge = document.createElement("span");
+        badge.className = "roh-badge";
+        badge.textContent = paperStatus;
+        head.append(badge);
+      }
+      const description = document.createElement("small");
+      description.textContent = feature.description + " · 값 있음 " + feature.n + "명";
+      block.append(head, description);
+      label.append(checkbox, block);
+      blockInfo.section.append(label);
+      const searchText = [group.name, feature.subgroup, feature.stage, feature.id, feature.label, feature.description, paperStatus];
+      blockInfo.rows.push({label, text: searchText.join(" ").toLowerCase()});
+    }
+    for (const [name, block] of blocks) {
+      const heading = bulk(name, block.features);
+      heading.classList.add("subheading");
+      block.section.prepend(heading);
+      section.append(block.section);
+    }
+    panels.push({name: group.name, button, section, blocks: [...blocks.values()]});
+  }
+  for (const [name, features] of stages) element("stages").append(bulk(name, features));
+  element("search").oninput = filterList;
+  filterList();
+  refreshSelection();
+  element("all").onclick = () => {
+    for (const id of inputs.keys()) selected.add(id);
+    refreshSelection();
+  }
+}
+
+function number(value) {
+  if (value == null) return "—";
+  if (value === 0) return "0";
+  return Math.abs(value) < .001 || Math.abs(value) >= 10000 ? value.toExponential(3) : Number(value.toPrecision(5)).toString();
+}
+
+function renderResult(data) {
+  const label = data.terms.length === 2 ? "단순회귀" : "다중회귀";
+  message(label + " 결과");
+  element("metrics").replaceChildren(...[
+    ["분석 환자", data.n + "명"], ["R²", number(data.r2)], ["수정 R²", number(data.adjustedR2)]
+  ].map(([key, value]) => {
+    const panel = document.createElement("div");
+    panel.className = "metric";
+    const strong = document.createElement("strong");
+    strong.textContent = value;
+    panel.append(key, strong);
+    return panel;
+  }));
+  element("sample-note").textContent = "결과변수와 선택한 모든 피처가 있는 환자로 적합했습니다. 결측 제외 " + data.missing + "명.";
+  const equation = data.terms.slice(1).map(term =>
+    (term.b < 0 ? " − " : " + ") + number(Math.abs(term.b)) + " × " + term.name).join("");
+  element("equation").textContent = data.outcome + " = " + number(data.terms[0].b) + equation;
+  element("terms").replaceChildren(...data.terms.map(term => {
+    const row = document.createElement("tr");
+    const values = [term.name, number(term.b), number(term.se), number(term.p),
+      "[" + number(term.low) + ", " + number(term.high) + "]"];
+    for (const value of values) row.insertCell().textContent = value;
+    if (featureInfo.has(term.name)) previewOn(row.cells[0], term.name);
+    return row;
+  }));
+  element("result").hidden = false;
+}
+
+element("clear").onclick = () => {
+  for (const name of selected) inputs.get(name).checked = false;
+  selected.clear();
+  refreshSelection();
+};
+element("outcome").onchange = refreshSelection;
+element("run").onclick = async () => {
+  const version = ++requestVersion;
+  element("run").disabled = true;
+  element("result").hidden = true;
+  message("회귀를 계산하고 있습니다.");
+  try {
+    const response = await fetch("/api/regression", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({predictors: [...selected], outcome: element("outcome").value})
+    });
+    const data = await response.json();
+    if (version !== requestVersion) return;
+    if (!response.ok) throw new Error(data.error);
+    renderResult(data);
+  } catch (error) {
+    if (version === requestVersion) message(error.message, true);
+  } finally {
+    if (version === requestVersion) element("run").disabled = !selected.size;
+  }
+};
+
+fetch("/api/features").then(response => {
+  if (!response.ok) throw new Error("피처 목록을 가져올 수 없습니다.");
+  return response.json();
+}).then(renderGroups).catch(error => message(error.message, true));
+
+fetch("/api/anatomy").then(response => {
+  if (!response.ok) throw new Error("CBCT image unavailable");
+  return response.json();
+}).then(data => {
+  anatomy = data;
+  updateCT();
+  renderPreview();
+}).catch(() => {
+  anatomyError = true;
+  updateCT();
+  renderPreview();
+});
+</script>
+</html>
