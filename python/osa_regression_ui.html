@@ -318,7 +318,7 @@ function filterList() {
 }
 
 function renderGroups(data) {
-  element("cohort").textContent = "피처 " + data.featureCount + "개 · 원본 코호트 " + data.n + "명 · 절편 포함 선형회귀";
+  element("cohort").textContent = "피처 " + data.featureCount + "개 · 원본 코호트 " + data.n + "명(결측치 처리: 자동 계측 → 전문가 엑셀 → 0) · 절편 포함 선형회귀";
   for (const outcome of data.outcomes) element("outcome").add(new Option(outcome.label, outcome.id));
   const stages = new Map();
   const order = ["환자 기본정보","기도","연구개","혀","상악골","하악골","두개저","악골·치열 계측","골격 전체 배치"];
@@ -410,7 +410,7 @@ function number(value) {
 
 function renderResult(data) {
   const label = data.terms.length === 2 ? "단순회귀" : "다중회귀";
-  message(label + " 결과");
+  message(label + " 결과" + (data.warning ? " · " + data.warning : ""));
   element("metrics").replaceChildren(...[
     ["분석 환자", data.n + "명"], ["R²", number(data.r2)], ["수정 R²", number(data.adjustedR2)]
   ].map(([key, value]) => {

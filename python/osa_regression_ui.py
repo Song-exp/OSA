@@ -64,6 +64,20 @@ def load_data():
         "BMI": master.BMI,
     }, index=base.index)
     features = base.join(bone).join(clinical)
+    # 2026-11-26 사용자 결정: Roh 지표 11개는 자동 복원값이 기본, 결측(E등급·측정 불가)이면 전문가 엑셀 값으로 채운다
+    from replicate_roh2025 import restored_cbct
+    restored = restored_cbct(); restored.index = "P_" + restored.index.astype(str)
+    roh = {"ANB": "ANB", "Nperp-A": "Nperp_A", "Nperp-Pog": "Nperp_Pog", "MP-FH": "MPFH", "TDI": "TDI", "PHI": "PHI",
+           "NCWR": "NCWR", "NAV": "NAV", "PAV": "PAV", "PMCA": "PMCA", "PAL": "PAL"}
+    for name, column in roh.items():
+        features[f"[기본] {name}"] = restored[column].reindex(features.index).fillna(features[f"[기본] {name}"])
+    # 2026-11-26 결정(osa_subset_search --excel-fill과 같음): 자동 추출 결측을 같은 지표의 엑셀 값으로 채운다
+    for auto, excel in (("PAV_fh", "[기본] PAV"), ("NAV_ts", "[기본] NAV"), ("H_col", "[기본] PAL")):
+        features[auto] = features[auto].fillna(features[excel])
+    # 2026-11-26 사용자 결정: 자동 복원·전문가 엑셀 모두 없는 칸은 0으로 채운다
+    # (PC 점수는 평균이 0이라 평균 모양, Nperp-A·Nperp-Pog는 P_35 1명)
+    zero = ["[기본] Nperp-A", "[기본] Nperp-Pog", "airway_shapePC1", "airway_shapePC2", *[f"12점배치_PC{i}" for i in range(1, 5)]]
+    features[zero] = features[zero].fillna(0.0)
     psg = pd.read_csv(R_ / "phase1/psg_restored_own.csv", encoding="utf-8-sig", index_col=0)
     outcomes = psg.loc[features.index, ["AHI_r", "AHI_SUP_r"]].rename(
         columns={"AHI_r": "AHI", "AHI_SUP_r": "AHI_SUP"}
@@ -71,7 +85,7 @@ def load_data():
     outcomes = outcomes.where(outcomes >= 0)
     outcomes["logAHI"] = np.log1p(outcomes["AHI"])
     outcomes["logAHI_SUP"] = np.log1p(outcomes["AHI_SUP"])
-    descriptions = {**{f"[기본] {key}": value for key, value in BASE.items()},
+    descriptions = {**{f"[기본] {key}": value + " · 자동 복원값(결측은 전문가 엑셀)" for key, value in BASE.items()},
                     **CLINICAL, **S2, **STV, **bone_descriptions}
     if age_restored:
         descriptions["Age"] += f" · 원본 환자표에서 결측 {age_restored}명 보완"
@@ -140,8 +154,15 @@ def regress(features, outcomes, predictors, outcome):
 
     # Scale the design for a stable fit, then return coefficients in input units.
     design = sm.add_constant((x - means) / scales, has_constant="add")
-    if np.linalg.matrix_rank(design) < design.shape[1]:
-        raise ValueError("선택한 피처 사이에 선형 종속이 있어 개별 회귀계수를 계산할 수 없습니다. 일부 피처를 빼 주세요.")
+    # 선형 종속이면 SPSS처럼 앞선 피처와 겹치는 피처를 빼고 계산하고, 안내 문구로 알린다
+    keep = [0]
+    for j in range(1, design.shape[1]):
+        if np.linalg.matrix_rank(design[:, keep + [j]]) > len(keep):
+            keep.append(j)
+    dropped = [predictors[j - 1] for j in range(1, design.shape[1]) if j not in keep]
+    warning = ("선택한 피처 사이에 선형 종속이 있어 " + ", ".join(dropped) + "을(를) 빼고 계산했습니다.") if dropped else None
+    design = design[:, keep]; predictors = [predictors[j - 1] for j in keep[1:]]
+    means, scales = means[[j - 1 for j in keep[1:]]], scales[[j - 1 for j in keep[1:]]]
     result = sm.OLS(y, design).fit()
     transform = np.diag(np.r_[1., 1 / scales])
     transform[0, 1:] = -means / scales
@@ -157,7 +178,7 @@ def regress(features, outcomes, predictors, outcome):
         })
     return {
         "outcome": OUTCOMES[outcome], "n": n, "missing": len(features) - n, "terms": terms,
-        "r2": float(result.rsquared), "adjustedR2": float(result.rsquared_adj),
+        "r2": float(result.rsquared), "adjustedR2": float(result.rsquared_adj), "warning": warning,
     }
 
 

@@ -53,9 +53,13 @@ const OSA_DATA = __DATA__;
     const sd=predictors.map((_,j)=>Math.sqrt(rows.reduce((s,r)=>s+(r[0][j]-mean[j])**2,0)/n));
     const constant=predictors.filter((_,j)=>sd[j]===0); if(constant.length) throw new Error("분석 표본에서 값이 일정한 피처가 있습니다. "+constant.join(", "));
     const ys=rows.map(r=>r[1]); if(Math.max(...ys)===Math.min(...ys)) throw new Error("분석 표본에서 결과변수 값이 일정합니다.");
-    const X=rows.map(r=>[1, ...r[0].map((v,j)=>(v-mean[j])/sd[j])]), p=k+1;
-    const XtX=Array.from({length:p},(_,a)=>Array.from({length:p},(_,b)=>X.reduce((s,r)=>s+r[a]*r[b],0)));
-    const inv=invert(XtX); if(!inv) throw new Error("선택한 피처 사이에 선형 종속이 있어 개별 회귀계수를 계산할 수 없습니다. 일부 피처를 빼 주세요.");
+    const Xall=rows.map(r=>[1, ...r[0].map((v,j)=>(v-mean[j])/sd[j])]), gram=c=>c.map(a=>c.map(b=>Xall.reduce((s,r)=>s+r[a]*r[b],0)));
+    let keep=[0]; for(let j=1;j<=k;j++){ if(invert(gram([...keep,j]))) keep.push(j); }                 // 선형 종속 피처는 빼고 계산(SPSS 방식)
+    const dropped=predictors.filter((_,j)=>!keep.includes(j+1)), warning=dropped.length ? "선택한 피처 사이에 선형 종속이 있어 "+dropped.join(", ")+"을(를) 빼고 계산했습니다." : null;
+    predictors=keep.slice(1).map(j=>predictors[j-1]); const mean2=keep.slice(1).map(j=>mean[j-1]), sd2=keep.slice(1).map(j=>sd[j-1]);
+    mean.length=0; mean.push(...mean2); sd.length=0; sd.push(...sd2);
+    const X=Xall.map(r=>keep.map(j=>r[j])), p=keep.length;
+    const XtX=gram(keep).map(r=>r), inv=invert(XtX);
     const Xty=Array.from({length:p},(_,a)=>X.reduce((s,r,i)=>s+r[a]*ys[i],0)), beta=inv.map(r=>r.reduce((s,v,b)=>s+v*Xty[b],0));
     const fit=X.map(r=>r.reduce((s,v,a)=>s+v*beta[a],0)), rss=ys.reduce((s,y,i)=>s+(y-fit[i])**2,0), ym=ys.reduce((s,y)=>s+y,0)/n, tss=ys.reduce((s,y)=>s+(y-ym)**2,0);
     const df=n-p, s2=rss/df, T=Array.from({length:p},(_,a)=>Array.from({length:p},(_,b)=>a===b?(a===0?1:1/sd[a-1]):(a===0&&b>0?-mean[b-1]/sd[b-1]:0)));
@@ -63,7 +67,7 @@ const OSA_DATA = __DATA__;
     const cov=inv.map(r=>r.map(v=>v*s2)), TC=T.map(r=>Array.from({length:p},(_,b)=>r.reduce((s,v,a)=>s+v*cov[a][b],0)));
     const se=T.map((r,i)=>Math.sqrt(Math.max(0, TC[i].reduce((s,v,b)=>s+v*r[b],0)))), crit=tppf975(df);
     const terms=["절편",...predictors].map((name,i)=>({name, b:coef[i], se:se[i], p: se[i]>0 ? tsf2(Math.abs(coef[i]/se[i]),df) : null, low:coef[i]-crit*se[i], high:coef[i]+crit*se[i]}));
-    const r2=1-rss/tss; return {outcome:OSA_DATA.outcomeLabels[outcome], n, missing:O[outcome].length-n, terms, r2, adjustedR2:1-(1-r2)*(n-1)/df};
+    const r2=1-rss/tss; return {outcome:OSA_DATA.outcomeLabels[outcome], n, missing:O[outcome].length-n, terms, r2, adjustedR2:1-(1-r2)*(n-1)/df, warning};
   }
   window.OSA_REGRESS = regress;
   window.fetch = async (url, options) => {
@@ -78,7 +82,7 @@ const OSA_DATA = __DATA__;
 BAT = '@echo off\r\ncd /d "%~dp0"\r\nstart "" "osa_regression_ui.html"\r\n'
 
 
-def col(s, digits=6):
+def col(s, digits=15):
     return [None if not np.isfinite(v) else float(f"{v:.{digits}g}") for v in s.to_numpy(dtype=float)]
 
 
@@ -98,16 +102,17 @@ def build():
 
 
 def check(features, outcomes, data):
-    """같은 자료로 Python regress()와 자바스크립트 regress()를 비교한다(값은 6자리로 반올림해 넣으므로 그 정도 차이는 허용)."""
+    """같은 자료로 Python regress()와 자바스크립트 regress()를 비교한다(값을 15자리로 넣어 반올림 오차가 거의 없음)."""
     cases = [(["[기본] ANB", "[기본] MP-FH", "[기본] TDI", "[기본] PMCA", "[기본] PAL", "Age", "Male", "BMI"], "AHI"),
-             (["[기본] Nperp-Pog", "airway_shapePC1", "Age", "Male", "BMI"], "logAHI"), (["tongue_vol"], "logAHI_SUP")]
+             (["[기본] Nperp-Pog", "airway_shapePC1", "Age", "Male", "BMI"], "logAHI"), (["tongue_vol"], "logAHI_SUP"),
+             (list(features.columns), "AHI")]                                                          # 전체 선택: 선형 종속 피처 제외 확인
     js = "const fs=require('fs');const h=fs.readFileSync(process.argv[1],'utf8');const s=h.slice(h.indexOf('<script>')+8,h.indexOf('</script>'));" \
          "global.window={};global.Response=class{};eval(s.replace('const OSA_DATA','global.OSA_DATA'));" \
          f"console.log(JSON.stringify({json.dumps(cases, ensure_ascii=False)}.map(([p,o])=>window.OSA_REGRESS(p,o))));"
     out = json.loads(subprocess.run(["node", "-e", js, str(DIST/"osa_regression_ui.html")], capture_output=True, text=True, encoding="utf-8", check=True).stdout)
     for (p, o), j in zip(cases, out):
         r = U.regress(features, outcomes, p, o); worst = 0.
-        assert r["n"] == j["n"], (r["n"], j["n"])
+        assert r["n"] == j["n"] and r["warning"] == j["warning"] and len(r["terms"]) == len(j["terms"]), (r["n"], j["n"], r["warning"], j["warning"])
         for a, b in zip(r["terms"], j["terms"]):
             for key in ("b", "se", "p", "low", "high"):
                 worst = max(worst, abs(a[key]-b[key])/max(1e-8, abs(a[key])))
