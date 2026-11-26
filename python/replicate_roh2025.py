@@ -5,7 +5,16 @@ PSG 값: 엑셀 TST와 일치하는 리포트 (= 엑셀 작성에 쓰인 검사)
 분류 기준(논문): Class I 0<ANB<4, Class II ANB≥4 / normo 25≤MP-FH<30, hyper ≥30, hypo <25 /
           TSD TDI<-2.5, non-TSD TDI>-2 / CSP2D=II+hyper+nonTSD, CSP3D=II+hyper+TSD, nonCSP=I+normo+nonTSD
 결과: Result_py/replication/*.csv, 요약은 화면 출력
+
+전체 환자 모드 (2026-11-26 사용자 결정: 클래스로 나누지 않고 P_39만 제외, 그룹 표 4·5 생략):
+  python replicate_roh2025.py excel     CBCT 값 = 병합 전문가 엑셀 (NAV·PAV 보충본)
+  python replicate_roh2025.py restored  CBCT 값 = 추출값. 골격 4개 = final_criteria_v2 최종 등급표(E등급 결측),
+                                        나머지 7개 = 정확도 실험 채택 원값(export/final_metrics.csv, NAV_ts·PAV_fh 원값)
+                                        추출값 결측은 엑셀 값으로 채운다(사용자 결정) → 채운 칸 수: filled_from_excel.csv
+  python replicate_roh2025.py compare   두 판 표3 나란히 → replication/all_compare_table3.csv
+  PSG 값·대상 환자는 두 판이 같다. 결과: Result_py/replication/all_excel/, all_restored/
 """
+import sys
 import warnings
 from itertools import combinations
 from pathlib import Path
@@ -28,12 +37,30 @@ EXCEL_COLS = {"Age": 6, "BMI": 9, "Sex": 10, "TST": 11, "AHI": 12, "RDI": 13, "O
               "NAV": 29, "PAV": 30, "PMCA": 31, "PAL": 32}
 
 
-def build() -> pd.DataFrame:
+def restored_cbct() -> pd.DataFrame:
+    """P(int) 색인, CBCT 열 = 추출값. 골격 4개는 최종 등급표(A–D만), 나머지는 채택 원값."""
+    v2 = ROOT / "Result_py/CBCT/patient_pipeline/v2"
+    fm = pd.read_csv(v2 / "develop85/final_criteria_v2/final_measurements_85.csv", encoding="utf-8-sig").set_index("Patient")
+    fx = pd.read_csv(v2 / "restore_ext/v1/experiments/export/final_metrics.csv", encoding="utf-8-sig", index_col=0)
+    name = {"Nperp_A": "Nperp-A", "Nperp_Pog": "Nperp-Pog", "MPFH": "MP-FH"}
+    out = {}
+    for k in CBCT:
+        m = name.get(k, k)
+        out[k] = fm[m].where(fm[m + "_grade"].isin(list("ABCD"))) if k in ("ANB", "Nperp_A", "Nperp_Pog", "MPFH") else fx[m + "_restored"]
+    out = pd.DataFrame(out)
+    out.index = out.index.str[2:].astype(int)
+    return out
+
+
+def build(src="excel", all_patients=False) -> pd.DataFrame:
     x = pd.read_excel(ROOT / "Patient_Info_Data_87명_261019.xlsx", header=None)
     r = x.iloc[3:]
     r = r[r[0].apply(lambda v: isinstance(v, (int, float)) and not pd.isna(v))]
     d = pd.DataFrame({"P": r[0].astype(int).values,
                       **{k: pd.to_numeric(r[c], errors="coerce").values for k, c in EXCEL_COLS.items()}})
+    if src == "restored":
+        rc = restored_cbct()
+        for k in CBCT: d[k] = d.P.map(rc[k]).fillna(d[k])
     rows, check = [], []
     for p in d.P:
         folder = next((ROOT / "Data/PSG").glob(f"P_{p}_*"))
@@ -59,6 +86,10 @@ def build() -> pd.DataFrame:
                             (d.Sag == "I") & (d.Ver == "normo") & (d.Trans == "nonTSD")],
                            ["CSP3D", "CSP2D", "nonCSP"], "other")
     n0 = len(d)
+    if all_patients:
+        d = d[d.P != 39]
+        print(f"대상({src}): {len(d)}명 (엑셀 {n0}명 - P_39), CBCT 결측 {d[CBCT].isna().sum().to_dict()}")
+        return d
     d = d[(d.P != 39) & (d.Sag != "III")]
     print(f"대상: {len(d)}명 (엑셀 {n0}명 − P_39 − Class III {n0 - 1 - len(d)}명)")
     return d
@@ -147,7 +178,38 @@ def correlations(d):
     return r
 
 
+def run_all(src):
+    """클래스 분할 없이 전체 환자: 표2(성별), 표3(회귀), 보충 상관, 기술통계."""
+    global OUT
+    OUT = OUT / f"all_{src}"; OUT.mkdir(parents=True, exist_ok=True)
+    d = build(src, all_patients=True)
+    if src == "restored":
+        rc = restored_cbct().reindex(d.P)
+        f = {k: [p for p in d.P if pd.isna(rc.at[p, k])] for k in CBCT}
+        pd.DataFrame([{"metric": k, "n_filled": len(v), "patients": " ".join(f"P_{p}" for p in v)} for k, v in f.items()]).to_csv(OUT / "filled_from_excel.csv", index=False, encoding="utf-8-sig")
+        print("엑셀로 채운 칸:", {k: len(v) for k, v in f.items()})
+    table2(d)
+    t3 = table3(d)
+    print("\n[표3] 다중회귀 (성별·나이·BMI 보정)"); print(t3[["DV", "IV", "B", "beta", "P", "Sig", "VIF", "AdjR2", "n"]].to_string(index=False))
+    correlations(d)
+    d.drop(columns=["P"]).describe().T.round(2).to_csv(OUT / "descriptive.csv", encoding="utf-8-sig")
+    print(f"\n저장: {OUT}")
+
+
+def compare():
+    t = {s: pd.read_csv(OUT / f"all_{s}/table3_regression.csv", encoding="utf-8-sig").set_index(["DV", "IV"]).add_suffix(f"_{s}")
+         for s in ("excel", "restored")}
+    m = pd.concat(t.values(), axis=1).reset_index()
+    m["same_sign"] = np.sign(m.beta_excel) == np.sign(m.beta_restored)
+    m["same_sig05"] = (m.P_excel < .05) == (m.P_restored < .05)
+    cols = ["DV", "IV"] + [f"{c}_{s}" for c in ("beta", "P", "n", "AdjR2") for s in t] + ["same_sign", "same_sig05"]
+    m[cols].to_csv(OUT / "all_compare_table3.csv", index=False, encoding="utf-8-sig")
+    print(m[cols].to_string(index=False))
+
+
 def main():
+    if sys.argv[1:2] in (["excel"], ["restored"]): return run_all(sys.argv[1])
+    if sys.argv[1:2] == ["compare"]: return compare()
     OUT.mkdir(parents=True, exist_ok=True)
     d = build()
     print("\n그룹 인원:", {k: int(v) for k, v in d.Pheno.value_counts().items()},

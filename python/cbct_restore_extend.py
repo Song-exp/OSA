@@ -8,6 +8,7 @@ Eb 설골 보정량 eb_review/v2/summary.json(offset_mm). 새 환자로 기준�
 사용: python cbct_restore_extend.py            (result.json이 있고 동결 54명이 아닌 환자 전부)
       python cbct_restore_extend.py --check 3 7  (동결 환자 재계산 → 기존 CSV와 같은지 확인)
       python cbct_restore_extend.py --nav-only  (Rh 규칙 변경 시 NAV만 갱신, 나머지 계측 보존)
+      python cbct_restore_extend.py --excel-only  (엑셀만 바뀐 경우 계측은 그대로, 엑셀값만 다시 읽어 비교표 갱신)
 """
 import json
 import sys
@@ -104,10 +105,11 @@ def frozen_rows(ids):
     fh = pd.read_csv(OUT/"fh_repair/v2/comparison.csv", encoding="utf-8-sig")
     for _, r in fh.iterrows():
         rows.append(dict(Patient=r.Patient, metric=r.metric, excel=r.excel, restored=r.after, before_fh_repair=r.before, qc=r.qc_after, source="fh_repair/v2"))
-    for metric, (path, col, x, _) in OTHER.items():
-        d = pd.read_csv(OUT/path, encoding="utf-8-sig"); xl = excel_col(x) if isinstance(x, int) else None
+    for metric, (path, col, _, _) in OTHER.items():
+        # 엑셀값은 동결 CSV의 *_xl 사본이 아니라 현재 엑셀에서 읽는다 (2026-11-25 NAV·PAV 결측 보충 반영)
+        d = pd.read_csv(OUT/path, encoding="utf-8-sig"); xl = excel_col(XL_COL[metric])
         for _, r in d[d.Patient.isin(ids)].iterrows():
-            rows.append(dict(Patient=r.Patient, metric=metric, excel=xl.get(int(r.Patient[2:]), np.nan) if xl else r[x], restored=r[col], qc="", source=path))
+            rows.append(dict(Patient=r.Patient, metric=metric, excel=xl.get(int(r.Patient[2:]), np.nan), restored=r[col], qc="", source=path))
     return rows
 
 
@@ -141,7 +143,13 @@ def main():
     only = [f"P_{a}" for a in sys.argv[2:]] if sys.argv[1:2] == ["--only"] else None    # 지정 환자만 다시 계산해 기존 결과에 합침
     DEST.mkdir(parents=True, exist_ok=True); rows, failed = [], {}
     nav_only = sys.argv[1:2] == ["--nav-only"]
-    if nav_only:
+    if sys.argv[1:2] == ["--excel-only"]:    # 엑셀만 바뀐 경우: 계측은 그대로 두고 excel 열만 다시 읽음
+        rows = pd.read_csv(DEST/"new_metrics.csv", encoding="utf-8-sig").to_dict("records")
+        for r in rows:
+            if r["metric"] in xl: r["excel"] = xl[r["metric"]].get(int(r["Patient"][2:]), np.nan)
+        ALT.update(pd.read_csv(DEST/"new_alternatives.csv", encoding="utf-8-sig").set_index("Patient").to_dict("index"))
+        failed = json.loads((DEST/"summary.json").read_text(encoding="utf-8"))["failed"]
+    elif nav_only:
         previous = pd.read_csv(DEST/"new_metrics.csv", encoding="utf-8-sig")
         alternatives = pd.read_csv(DEST/"new_alternatives.csv", encoding="utf-8-sig").set_index("Patient")
         assert set(previous.Patient) == set(new_ids) == set(alternatives.index)

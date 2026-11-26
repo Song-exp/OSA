@@ -1,8 +1,8 @@
 """83명 Step 1~4 (분할 없음, 계수 유의성 판단용).
-Step 1: Roh CBCT 지표 11개 동시 모델(재현 분석). 신규 인자 분석의 출발점은 기준 5개 모델(ANB·MP-FH·TDI·PMCA·PAL, 복원값 결측은 엑셀로 채움).
+Step 1: Roh 2025 표 3 재현(5개 지표 × 결과 변수 6개, 엑셀 판 대 추출값 판; 계산은 replicate_roh2025.py, 2026-11-26 11개 동시 모델 삭제). 신규 인자 분석의 출발점은 기준 5개 모델(ANB·MP-FH·TDI·PMCA·PAL, 복원값 결측은 엑셀로 채움).
 Step 2~4 (같은 템플릿): 1. 변수 설명 2. 상관 히트맵(기준 5개 인자 + 신규 인자끼리) 3. 대체 관계(도메인 짝) 4. X 전체 요약표(대체·추가) + 행을 누르면 회귀식 단위 표.
 기준 모델은 복원값 판. 비교는 X가 있는 같은 환자에서.
-출력: Result_py/analysis/all83/전체_83명_단계별_회귀.html (+ step1_roh.csv, step1_4.csv, figs/heat_*.png)
+출력: Result_py/analysis/all83/전체_83명_단계별_회귀.html, Step1-3_회귀_보고서.html (+ step1_4.csv, figs/heat_*.png)
 """
 import json, warnings; warnings.filterwarnings("ignore")
 from html import escape
@@ -103,15 +103,6 @@ def model_json(f, terms, n):
     return {"n": int(n), "r2": float(f.rsquared), "ar2": float(f.rsquared_adj), "terms": [{"t": t, **r} for t, r in terms.items()]}
 
 
-def step1(d):
-    out = {}
-    u = d.dropna(subset=B0+list(E11.values())+list(Q11.values()))                        # 두 판을 같은 환자로
-    for ver, cols in (("엑셀", list(E11.values())), ("복원값", list(Q11.values()))):
-        for y in YS:
-            f, terms = fit(u, y, B0+cols); out[(ver, y)] = {"n": len(u), "r2": f.rsquared, "ar2": f.rsquared_adj, "terms": terms}
-    return out
-
-
 def newfactor(d, cands, sid):
     base = B0+[BCOL[k] for k in ROH]; rows, eq = [], {}
     for x, pair in cands.items():
@@ -164,36 +155,49 @@ def describe(v, cat):
     return r if r else cat.get(v, ("(정의 없음)", ""))
 
 
-def step1_html(S1, cat, figs, filled):
-    F = filled; divs = []
-    for i, y in enumerate(YS):
-        for ver in ("엑셀", "복원값"):
-            m = S1[(ver, y)]; body = []
-            for t, r in m["terms"].items():
-                k11 = next((k for k in R11 if t in (E11[k], Q11[k])), None)
-                key = (X11[k11] if ver == "엑셀" else M11[k11]) if k11 else t
-                key = "a_PAV" if key == "a_PAV_mm3" else key
-                de, so = cat.get(key, ("", "")) if t != "const" else ("절편", "")
-                nfill = F[ver][k11] if k11 else 0
-                fill = (f"<br><span class='note'>결측 {nfill}명은 {'복원값' if ver == '엑셀' else '엑셀 값'}으로 채움</span>" if nfill else "")
-                sig = " class=sig" if r["p"] < .05 and t != "const" else ""
-                rc = ' class="rohsig"' if k11 in ROH_SIG else ""
-                body.append(f'<tr{rc}><td><code>{escape(k11 + (" (엑셀)" if ver == "엑셀" else " (복원값)") if k11 else TERM.get(t, t))}</code>{fill}</td><td>{escape(de)}</td><td>{escape(so)}</td><td>{thumb(key, figs)}</td><td>{m["n"]}</td>'
-                            f'<td>{r["B"]:+.3g}</td><td>{nf(r["beta"])}</td><td{sig}>{pf(r["p"])}</td><td>{nf(r["vif"], ".2f")}</td><td>{m["r2"]:.3f}</td><td>{m["ar2"]:.3f}</td></tr>')
-            divs.append(f'<div class="yt" data-s="1" data-k="{i}|{ver}"{"" if (i == 0 and ver == "엑셀") else " hidden"}><div class="tw"><table><thead><tr><th>항</th><th>변수 뜻</th><th>만든 과정</th><th>CT 위치</th>'
-                        f'<th>n</th><th>B</th><th>β</th><th>p</th><th>VIF</th><th>모델 R²</th><th>수정 R²</th></tr></thead><tbody>{"".join(body)}</tbody></table></div></div>')
-    opts = "".join(f'<option value="{i}">{escape(YL[y])}</option>' for i, y in enumerate(YS))
-    fe = ", ".join(f"{k} {v}명" for k, v in F["엑셀"].items() if v); fr = ", ".join(f"{k} {v}명" for k, v in F["복원값"].items() if v)
-    fb = ", ".join(f"{k} {v}명" for k, v in F["둘 다 없음"].items() if v); n = S1[("엑셀", YS[0])]["n"]
-    return (f'<h2 id="s1">Step 1. Roh 2025 CBCT 지표 11개 다중회귀 (엑셀 값 대 복원값)</h2>'
-            f'<p><b>설정:</b> Roh 2025 Table 1의 CBCT 지표 11개(골격 7개, 기도 4개)를 성별·나이·BMI와 함께 한 모델에 넣었다. '
-            f'엑셀 판은 엑셀 결측({fe})을 복원값으로, 복원값 판은 복원값 결측({fr})을 엑셀 값으로 채웠다. 두 값이 모두 없는 환자({fb})를 빼 두 판 모두 같은 {n}명이다. PAV는 엑셀 단위(mm³)로 맞췄다.</p>'
-            f'<p class="legend"><span class="rohsig">Roh 2025 Table 3에서 AHI·앙와위 AHI에 유의했던 지표 (ANB, TDI, PMCA)</span></p>'
-            f'<div class="ctl"><label>결과 변수(Y) <select id="y1" onchange="showY(\'1\')">{opts}</select></label> <label>값 <select id="v1" onchange="showY(\'1\')"><option value="엑셀">엑셀 값 (연구실 수작업, 결측은 복원값)</option><option value="복원값">복원값 (CBCT 자동 계측, 결측은 엑셀)</option></select></label></div>'
-            f'<p class="eq">회귀식(하나): Y ~ 성별 + 나이 + BMI + ANB + Nperp-A + Nperp-Pog + MP-FH + TDI + PHI + NCWR + NAV + PAV + PMCA + PAL</p>'
-            f'<p class="note">Roh 2025 Table 3은 이 중 5개(ANB, MP-FH, TDI, PMCA, PAL)만 넣은 모델이다(102명, AHI 원값): ANB β 0.32 (p=.005), MP-FH 0.05 (p=.680), TDI −0.27 (p=.002), PMCA −0.21 (p=.039), PAL −0.03 (p=.727), 수정 R² 0.40. '
-            f'11개를 함께 넣으면 같은 정보를 재는 지표(ANB와 Nperp-Pog, PAV와 PMCA·PAL 등)가 서로의 계수를 나눠 가지므로 VIF를 함께 볼 것.</p>'
-            + "".join(divs))
+# Roh 2025 표 3 (102명, 성별·나이·BMI 보정): {Y: ({지표: (β, p)}, 수정 R²)}
+ROH_T3 = {"AHI": ({"ANB": (.32, .005), "MPFH": (.05, .680), "TDI": (-.27, .002), "PMCA": (-.21, .039), "PAL": (-.03, .727)}, .40),
+          "AHI_SUP": ({"ANB": (.29, .008), "MPFH": (.15, .175), "TDI": (-.27, .002), "PMCA": (-.20, .044), "PAL": (.03, .722)}, .42),
+          "AI": ({"ANB": (.21, .049), "MPFH": (.08, .485), "TDI": (-.31, .001), "PMCA": (-.21, .055), "PAL": (.17, .102)}, .36),
+          "RDI": ({"ANB": (.30, .008), "MPFH": (.04, .694), "TDI": (-.27, .002), "PMCA": (-.23, .027), "PAL": (-.05, .645)}, .39),
+          "ODI": ({"ANB": (.26, .026), "MPFH": (-.01, .916), "TDI": (-.27, .003), "PMCA": (-.10, .347), "PAL": (.05, .616)}, .37),
+          "LSaO2": ({"ANB": (-.27, .022), "MPFH": (.14, .232), "TDI": (.44, .0005), "PMCA": (.12, .254), "PAL": (-.10, .356)}, .33)}
+ROH_YL = {"AHI": "AHI", "AHI_SUP": "앙와위 AHI", "AI": "무호흡 지수 (AI)", "RDI": "RDI", "ODI": "산소포화도 저하 지수 (ODI)", "LSaO2": "최저 산소포화도"}
+
+
+def step1_roh_html():
+    """replicate_roh2025.py excel|restored 결과(Result_py/replication/all_*)로 Roh 표 3 재현 절을 만든다."""
+    rep = A.R/"replication"
+    t = {s: pd.read_csv(rep/f"all_{s}/table3_regression.csv", encoding="utf-8-sig").set_index(["DV", "IV"]) for s in ("excel", "restored")}
+    fill = pd.read_csv(rep/"all_restored/filled_from_excel.csv", encoding="utf-8-sig").set_index("metric").n_filled
+    lab = {"MPFH": "MP-FH"}; blocks = []; same_sign = same_sig = tot = 0
+    cell = lambda b, p: f'<td>{b:+.2f}</td><td{" class=sig" if p < .05 else ""}>{pf(p)}</td>'
+    for y, (roh, r2) in ROH_T3.items():
+        rows = []
+        for iv, (rb, rp) in roh.items():
+            e, r = t["excel"].loc[(y, iv)], t["restored"].loc[(y, iv)]
+            tot += 1; same_sign += int(np.sign(e.beta) == np.sign(r.beta)); same_sig += int((e.P < .05) == (r.P < .05))
+            rows.append(f'<tr{" class=rohsig" if rp < .05 else ""}><td><code>{lab.get(iv, iv)}</code></td>{cell(rb, rp)}'
+                        f'<td>{e.B:+.3g}</td>{cell(e.beta, e.P)}<td>{e.VIF:.2f}</td><td>{r.B:+.3g}</td>{cell(r.beta, r.P)}<td>{r.VIF:.2f}</td></tr>')
+        e0, r0 = t["excel"].loc[y].iloc[0], t["restored"].loc[y].iloc[0]
+        blocks.append(f'<h3>{escape(ROH_YL[y])}</h3><div class="tw"><table class="reg"><thead><tr><th rowspan="2">지표</th><th colspan="2">Roh 2025 (102명)</th>'
+                      f'<th colspan="4">엑셀 판 ({int(e0.n)}명)</th><th colspan="4">추출값 판 ({int(r0.n)}명)</th></tr>'
+                      f'<tr><th>β</th><th>p</th><th>B</th><th>β</th><th>p</th><th>VIF</th><th>B</th><th>β</th><th>p</th><th>VIF</th></tr></thead><tbody>{"".join(rows)}</tbody>'
+                      f'<tfoot><tr><td>수정 R²</td><td colspan="2">{r2:.2f}</td><td colspan="4">{e0.AdjR2:.3f}</td><td colspan="4">{r0.AdjR2:.3f}</td></tr></tfoot></table></div>')
+    fl = ", ".join(f"{lab.get(k, k)} {int(fill[k])}명" for k in ("ANB", "MPFH", "TDI", "PMCA", "PAL") if fill[k])
+    return (f'<h2 id="s1">Step 1. Roh 2025 표 3 재현 (전문가 엑셀 값 대 추출값)</h2>'
+            f'<p><b>설정:</b> Roh 2025 표 3과 같은 다중선형회귀를 결과 변수 6개(AHI, 앙와위 AHI, AI, RDI, ODI, 최저 산소포화도)마다 한 번씩, 엑셀 판과 추출값 판에서 각각 돌렸다. '
+            f'CBCT 지표는 Roh가 상관 분석으로 고른 5개(ANB, MP-FH, TDI, PMCA, PAL)로 고정했고, 결과 변수는 원값(로그 변환 없음)이다. '
+            f'대상은 엑셀 87명 중 P_39(본인 CBCT 아님)만 뺀 86명이며, 클래스로 나누거나 학습·평가로 나누지 않았다.</p>'
+            f'<ul><li><b>엑셀 판</b>: 병합한 전문가 엑셀 값 (2026-11-25 받은 엑셀로 NAV·PAV 빈칸을 채운 판).</li>'
+            f'<li><b>추출값 판</b>: 골격(ANB, MP-FH)은 최종 등급표 값(E등급 결측), TDI·PMCA·PAL은 채택 원값. 추출값 결측({fl})은 엑셀 값으로 채웠다.</li>'
+            f'<li>결과 변수: AHI·RDI·ODI·최저 산소포화도는 엑셀 값, 앙와위 AHI·AI는 엑셀 총수면시간과 일치하는 PSG 리포트 값. 두 판이 같다.</li></ul>'
+            f'<p class="eq">회귀식(6번): Y ~ 성별 + 나이 + BMI + ANB + MP-FH + TDI + PMCA + PAL</p>'
+            f'<p><b>요약:</b> 지표 계수 {tot}개 중 엑셀 판과 추출값 판의 부호가 같은 것 {same_sign}개, p &lt; 0.05 판정이 같은 것 {same_sig}개. '
+            f'ANB는 두 판 모두 AHI·앙와위 AHI·RDI에서 유의하다. Roh에서 유의했던 TDI(음의 계수)는 두 판 모두 유의하지 않다.</p>'
+            f'<p class="legend"><span class="rohsig">Roh 2025 표 3에서 p &lt; 0.05였던 칸</span></p>'
+            f'<p class="note">β: 표준화 계수, B: 비표준화 계수, VIF: 다중공선성. 보정 변수(성별·나이·BMI)의 계수는 Roh 표 3처럼 생략했다. 출처: replicate_roh2025.py, Result_py/replication/all_excel·all_restored/.</p>'
+            + "".join(blocks))
 
 
 def nf_html(sid, title, intro, t, cat, figs, heat, pcs=()):
@@ -394,8 +398,7 @@ def eqstr(cols):
 
 def baseline_report(d, S3):
     """보고서·CSV·설정을 같은 설명변수 목록에서 생성한다."""
-    specs = [("Roh11_restored", "Step 1：11개 재현 모델 (복원값)", B0+list(Q11.values())),
-             ("Core5", "신규 인자 분석 출발점：기준 5개 모델", B0+[BCOL[k] for k in ROH]),
+    specs = [("Core5", "신규 인자 분석 출발점：기준 5개 모델", B0+[BCOL[k] for k in ROH]),
              ("Step2", "Step 2：기도 대표값 대체 모델", BASE2),
              ("Step3", "Step 3：MP-FH 추가 대체 모델", S3["base3"])]
     rows, manifest = [], {}
@@ -411,7 +414,7 @@ def baseline_report(d, S3):
     body = "".join(f'<tr><td>{escape(label)}</td><td class="eq">{escape(eqstr(cols))}</td>'
                    f'<td>{len(d.dropna(subset=cols))}</td></tr>' for _, label, cols in specs)
     return ('<section id="baselines"><h2>분석별 기준 모델</h2>'
-            '<p>Step 1의 11개 모델은 기존 지표의 동시 관련성을 보는 재현 분석이다. 신규 인자 분석은 별도로 고정한 5개 지표에서 출발한다. '
+            '<p>Step 1은 Roh 2025 표 3 재현이다(86명, 결과 변수 원값). 신규 인자 분석(Step 2~4)은 같은 5개 지표의 기준 모델(83명, 로그 결과 변수, 복원값 판)에서 출발한다. '
             '아래 n은 기준 모델의 완전자료 수이며, X를 추가하면 결측에 따라 줄어든다. 서로 다른 행의 R²는 환자 구성이 달라 직접 비교하지 않는다. '
             '대체·추가 비교에서는 같은 환자로 기준 모델을 다시 적합한다.</p>'
             '<div class="tw"><table class="reg"><thead><tr><th>분석</th><th>회귀식</th><th>n</th></tr></thead>'
@@ -473,7 +476,7 @@ def step3_html(S3, d, cat, figs, heat, pcs, intro):
 
 def main():
     import osa_var_figs as VF
-    d = data(); cat = A.catalog(); filled = d.attrs["filled"]; S1 = step1(d)
+    d = data(); cat = A.catalog(); filled = d.attrs["filled"]
     cands = {"2": STEP2, "3": STEP3, "4": step4(d)}; T, EQ = [], {}
     for s, c in cands.items():
         if s == "2": S2 = step2(d); t, eq = S2["t"], S2["eq"]
@@ -482,15 +485,13 @@ def main():
         T.append(t); EQ[s] = eq
     T = pd.concat(T); T.round(5).to_csv(OUT/"step1_4.csv", index=False, encoding="utf-8-sig")
     names = list(dict.fromkeys(list(MCOL.values())+list(XCOL.values())+list(X11.values())+[v for v in M11.values() if v != 'a_PAV_mm3']+list(STEP2)+list(STEP3)+list(T["var"]))); ex, figs = VF.build(d, names)
-    s1 = pd.DataFrame([{"ver": v, "y": y, "term": t, **r, "n": m["n"], "R2": m["r2"], "adjR2": m["ar2"]} for (v, y), m in S1.items() for t, r in m["terms"].items()])  # 11개 판
-    s1.round(5).to_csv(OUT/"step1_roh.csv", index=False, encoding="utf-8-sig")
     intro = {"2": "기도 신규 인자. 단면 관련 지표는 PMCA, 길이·높이 지표는 PAL과 같은 차원으로 보았다. 연구개·비강·위치·모양 지표는 기준 5개 모델에 같은 차원이 없다.",
              "3": "3D 골격 신규 인자. Step 2 모델에서 출발해, 기준 5개 모델의 골격 인자와 확실히 겹치는 MP-FH만 SN_MP로 대체한 Step 3 모델을 만들고, Step 3 변수끼리 묶은 묶음의 대표값과 단독 변수가 그 위에 더하는지 본다.",
              "4": "연조직·연동·형상 탐색 인자(혀, 저작근, 부비동, 설골, 구강 공간, 요인 점수, 지렛대, 잔여 형상, 공동 축, 부위별 크기·위치). 기준 5개 모델에 같은 차원이 없어 추가 모델로 판단한다."}
     titles = {"2": "Step 2. 기도 신규 인자", "3": "Step 3. 3D 골격 신규 인자", "4": "Step 4. 연조직·연동·형상 탐색"}
     import osa_pc_figs as PCF
     PCS = PCF.build({"2": list(STEP2), "3": list(STEP3), "4": list(T[T.step == "4"]["var"].unique())})
-    secs = [baseline_report(d, S3), step1_html(S1, cat, figs, d.attrs["filled11"])]
+    secs = [baseline_report(d, S3), step1_roh_html()]
     for s in ("2", "3", "4"):
         t = T[T.step == s]
         if s == "3": intro[s] += " 표의 행 색과 히트맵 글자 색으로 변수 출처를 구분했다(맨 위 범례)."
@@ -508,10 +509,10 @@ tr.pick{{cursor:pointer}}tr.pick:hover td{{background:#f3f6fa}}tr.pick.on td{{ba
 .eqbox{{border:1px solid #b8c2cc;border-radius:6px;padding:8px 12px;margin:10px 0}}.eqrow{{display:flex;gap:16px;flex-wrap:wrap}}.eqc{{flex:1 1 300px}}
 tr.c1 td{{background:#e6efff}}tr.c1 td:first-child{{border-left:4px solid #2563eb}}.legend .c1{{background:#e6efff;border-left:4px solid #2563eb;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c2 td{{background:#f1e9ff}}tr.c2 td:first-child{{border-left:4px solid #7c3aed}}.legend .c2{{background:#f1e9ff;border-left:4px solid #7c3aed;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c3 td{{background:#e3f7ee}}tr.c3 td:first-child{{border-left:4px solid #059669}}.legend .c3{{background:#e3f7ee;border-left:4px solid #059669;padding:2px 8px;margin-right:8px;display:inline-block}}tr.c4 td{{background:#fff1dc}}tr.c4 td:first-child{{border-left:4px solid #d97706}}.legend .c4{{background:#fff1dc;border-left:4px solid #d97706;padding:2px 8px;margin-right:8px;display:inline-block}}tr.rohsig td{{background:#fff3c4}}tr.rohsig td:first-child{{border-left:4px solid #e0a100}}.legend .rohsig{{background:#fff3c4;border-left:4px solid #e0a100;padding:2px 8px;display:inline-block}}.pcgrid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}}.pcf{{margin:0;border:1px solid #b8c2cc;border-radius:6px;padding:6px}}.pcf img{{width:100%}}.pcf figcaption{{font-size:.82rem}}
 .ctl{{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:8px 0}}.ctl select{{font-size:.95rem;padding:3px 6px;max-width:100%}}.eq{{font-family:monospace;font-size:.85rem;margin:6px 0}}</style></head><body><main>
-<h1>83명 단계별 회귀 결과</h1><p class="sub">2026-11-18 · 분할 없음 (계수 유의성 판단용) · 대상 83명 (19세 미만 2명, CBCT 없음 2명 제외, Class III 3명 포함)</p>
+<h1>83명 단계별 회귀 결과</h1><p class="sub">2026-11-26 · 분할 없음 (계수 유의성 판단용) · Step 1 Roh 재현은 86명(P_39만 제외), 나머지는 83명 (19세 미만 2명, CBCT 없음 2명 제외, Class III 3명 포함)</p>
 <nav><a href="#baselines">기준 모델</a><a href="#s1">Step 1</a><a href="#s2">Step 2</a><a href="#s3">Step 3</a><a href="#s4">Step 4</a></nav>
 <div class="box"><b>읽는 법</b><ul>
-<li><b>Step 1</b>은 Roh CBCT 지표 11개와 성별·나이·BMI의 재현 분석이다. Roh Table 3의 5개 모델과 구분하며, '값' 상자로 엑셀 값과 복원값을 바꾼다.</li>
+<li><b>Step 1</b>은 Roh 2025 표 3 재현이다(5개 지표, 결과 변수 6개, 엑셀 판 대 추출값 판).</li>
 <li><b>Step 2~4</b>는 같은 순서로 정리했다. <b>1. 변수 설명</b>(무엇을 재는지, 원자료부터 계산까지) → <b>주성분·요인 축 결과</b>(해당 변수가 있는 단계만) → <b>상관 히트맵</b>(기준 5개 인자와, 신규 인자끼리) → <b>대체 관계</b>(같은 차원의 기준 5개 인자) → <b>회귀 결과</b>(X 전체 요약표, 행을 누르면 회귀식 단위 표).</li>
 <li><b>대체 모델</b>: 같은 차원의 인자 자리에 X를 넣고 같은 환자에서 R² 변화를 본다. <b>추가 모델</b>: 해당 단계의 기준 모델을 둔 채 X를 더한다. 추가 계수와 FDR q는 해당 모델을 보정한 관련성을 나타낸다. 인과 효과나 표본 밖 예측력은 별도 검증이 필요하다.</li>
 <li>기준 5개 모델은 복원값 판(결측은 엑셀 값)이다. Step 2는 기도 대표값 대체 후, Step 3은 추가로 MP-FH를 SN_MP로 대체한 모델 위에서 X를 더한다. Step 4는 원래 기준 5개 모델 위의 별도 탐색이다. 각 비교는 기준 모델과 X 값이 모두 있는 같은 환자에서 수행한다.</li>

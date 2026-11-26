@@ -36,7 +36,8 @@ SKEL = {"ANB": "ANB", "Nperp-A": "Nperp_A", "Nperp-Pog": "Nperp_Pog", "MP-FH": "
 ALT = {"TDI": ("tdi_review/v1/tdi.csv", ["TDI_rc", "TDI_surface"], "TDI_xl"),
        "PHI": ("phi_ncwr_review/v1/phi_ncwr.csv", ["PHI_rc", "PHI_oc", "PHI_mb"], "PHI_xl"),
        "NCWR": ("phi_ncwr_review/v1/phi_ncwr.csv", ["NCWR_ts", "NCWR_wall", "NCWR_jugal"], "NCWR_xl"),
-       "NAV": ("nav_review/v1/nav.csv", ["NAV_ts", "NAV_ts_500", "NAV", "NAV_500"], "NAV_xl"),
+       # 2026-11-26 사용자 확정: NAV 공기 임계값은 Roh 수동 범위(-400~-500 HU) 안의 -400 HU로 고정(-500 변형 제외), 최종값 NAV_ts 원값
+       "NAV": ("nav_review/v1/nav.csv", ["NAV_ts", "NAV"], "NAV_xl"),
        "PAV": ("pav_review/v1/pav.csv", ["PAV_fh", "PAV_midline"], "PAV_xl"),
        "PMCA": ("pmca_review/v1/pmca_candidates.csv", ["PMCA_center", "PMCA_axial"], 31)}    # 첫 후보 = 현재 기본값
 VARIANTS = [("jung", False), ("yao4", False), ("jung", True), ("yao4", True)]    # 첫 항목 = 현재 기본값
@@ -106,14 +107,10 @@ def alt_table(hold=False):
     out = {}
     na = pd.read_csv(EXT/"new_alternatives.csv", encoding="utf-8-sig") if hold else None
     for m, (path, cols, x) in ALT.items():
-        if hold:
-            ex = excel_col(x) if isinstance(x, int) else excel_col({"TDI": 28, "PHI": 27, "NCWR": 26, "NAV": 29, "PAV": 30}[m])
-            t = na[["Patient"]+cols].copy(); t["excel"] = t.Patient.map(lambda p: ex.get(int(p[2:]), np.nan))
-        else:
-            d = pd.read_csv(OUT/path, encoding="utf-8-sig")
-            t = d[["Patient"]+cols].copy()
-            if isinstance(x, str): t["excel"] = d[x]
-            else: ex = excel_col(x); t["excel"] = d.Patient.map(lambda p: ex.get(int(p[2:]), np.nan))
+        # 엑셀값은 동결 CSV의 *_xl 사본이 아니라 현재(전문가 최종) 엑셀에서 읽는다 (2026-11-26 NAV·PAV 보충 반영)
+        ex = excel_col(x) if isinstance(x, int) else excel_col({"TDI": 28, "PHI": 27, "NCWR": 26, "NAV": 29, "PAV": 30}[m])
+        t = (na if hold else pd.read_csv(OUT/path, encoding="utf-8-sig"))[["Patient"]+cols].copy()
+        t["excel"] = t.Patient.map(lambda p: ex.get(int(p[2:]), np.nan))
         out[m] = t
     return out
 
